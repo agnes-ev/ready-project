@@ -1,0 +1,34 @@
+# dependências
+frontend/node_modules/
+
+# cache do Vite
+frontend/.vite/
+
+# build
+dist/
+build/
+
+# arquivos de ambiente
+.env
+.env.*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# sistema
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.vscode/
+.idea/
+
+# TypeScript
+*.tsbuildinfo
+
+# testes
+coverage/
