@@ -2,6 +2,7 @@ import { BookOpen, FileText, Plus, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { Avatar } from "@radix-ui/react-avatar";
+import UserProfilePopup from "@/components/UserProfilePopup";
 
 interface Book {
   id: string;
@@ -38,18 +39,15 @@ const Library = () => {
             <img src="/Logo/logo2-v3.png" alt="Logo" className="w-14 h-15 object-contain" />
             <span className="font-bold text-foreground tracking-tight mt-2 text-4xl">Read.y</span>
           </Link>
+          <div className="flex items-center gap-4">
+            <UserProfilePopup userName="Usuário" booksReadCount={3} />
+            <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-smooth">
+              Sair
+            </Link>
+          </div>
       
 
-        <div className="flex flex-row gap-3 items-center">
-
-           <Link to="/profile" className="px-4 py-2 bg-gray-300 rounded-full">
-            <Avatar>A</Avatar>
-          </Link>
-            
-             <Link to="/" className="mr-6 text-sm text-muted-foreground hover:text-foreground transition-smooth">
-            Sair
-          </Link>
-        </div>
+        
        
         </div>
       </header>

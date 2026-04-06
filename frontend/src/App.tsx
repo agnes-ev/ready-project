@@ -9,7 +9,6 @@ import Register from "./pages/Register";
 import Library from "./pages/Library";
 import Reader from "./pages/Reader";
 import NotFound from "./pages/NotFound";
-import { Profile } from "./pages/Profile";
 
 const queryClient = new QueryClient();
 
@@ -24,7 +23,6 @@ const App = () => (
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/library" element={<Library />} />
-          <Route path="/profile" element={<Profile/>} />
           <Route path="/reader" element={<Reader />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

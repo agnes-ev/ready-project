@@ -9,8 +9,16 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
+  const isLongEnough = password.length >= 6;
+  const hasLowercase = /[a-z]/.test(password);
+  const hasUppercase = /[A-Z]/.test(password);
+  const hasNumber = /\d/.test(password);
+  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+  const isPasswordValid = isLongEnough && hasLowercase && hasUppercase && hasNumber && hasSpecialChar;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isPasswordValid) return;
     navigate("/library");
   };
 
@@ -49,12 +57,13 @@ const Register = () => {
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground block">Senha</label>
+
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="••••••"
                 className="w-full px-4 py-3 pr-12 bg-secondary rounded-xl text-foreground placeholder:text-muted-foreground focus:outline-none focus:shadow-focus-ring transition-smooth"
                 required
               />
@@ -66,11 +75,29 @@ const Register = () => {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+            <ul className="text-xs list-disc list-inside space-y-1">
+              <li className={isLongEnough ? "text-emerald-500" : "text-destructive"}>
+                Senha de no mínimo de 6 caracteres
+              </li>
+              <li className={hasUppercase ? "text-emerald-500" : "text-destructive"}>
+                Adicione pelo menos uma letra maiúscula
+              </li>
+              <li className={hasLowercase ? "text-emerald-500" : "text-destructive"}>
+                Adicione pelo menos uma letra minúscula
+              </li>
+              <li className={hasNumber ? "text-emerald-500" : "text-destructive"}>
+                Adicione pelo menos um número
+              </li>
+              <li className={hasSpecialChar ? "text-emerald-500" : "text-destructive"}>
+                Adicione pelo menos um símbolo especial (ex: !@#$%^&*)
+              </li>
+            </ul>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-smooth"
+            disabled={!isPasswordValid}
+            className={`w-full py-3 rounded-xl font-medium transition-smooth ${isPasswordValid ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed"}`}
           >
             Cadastrar
           </button>
@@ -81,6 +108,9 @@ const Register = () => {
           <Link to="/login" className="text-primary font-medium hover:underline">
             Entrar
           </Link>
+        </p>
+        <p className="text-center text-xs text-muted-foreground">
+          Ao criar sua conta, você concorda com os Termos de Uso.
         </p>
       </div>
     </div>
