@@ -3,11 +3,13 @@ import { ChevronLeft, ChevronRight, Maximize2, Sparkles, Volume2 } from "lucide-
 import { Link } from "react-router-dom";
 
 const content = [
-  "A leitura adaptativa é uma técnica que ajusta a apresentação do texto para facilitar a compreensão. Para pessoas com TDAH, parágrafos curtos reduzem a distração e ajudam a manter o foco no conteúdo essencial.\n\nEsta abordagem reconhece que cada leitor tem necessidades únicas. Ao personalizar o espaçamento, tamanho da fonte e contraste, criamos uma experiência de leitura que respeita o ritmo individual.",
-  "A dislexia se beneficia de fontes com pesos diferenciados na base das letras. O espaçamento aumentado entre caracteres evita o efeito de 'aglomeração' visual que dificulta a decodificação.\n\nEstudos mostram que linhas mais curtas, com no máximo 65 caracteres, reduzem significativamente o esforço de leitura para pessoas com dislexia.",
+  "    Querido pai, Tu me perguntaste recentemente por que afirmo ter medo de ti. Eu não soube, como de costume, o que te responder, em parte justamente pelo medo que tenho de ti, em parte porque existem tantos detalhes na justificativa desse medo, que eu não poderia reuni-los no ato de falar de modo mais ou menos coerente. E se procuro responder-te aqui por escrito, não deixará de ser de modo incompleto, porque também no ato de escrever o medo e suas conseqüências me atrapalham diante de ti e porque a grandeza do tema ultrapassa de longe minha memória e meu entendimento.",
+  "    Para ti a questão sempre se apresentou bem simples, pelo menos enquanto falaste dela diante de mim e, sem cuidar a quem, diante de muitos outros. Para ti as coisas pareciam ser mais ou menos assim: trabalhaste pesado durante tua vida inteira, sacrificaste tudo pelos teus filhos, e sobretudo por mim, enquanto eu “vivi numa boa” por conta disso, gozei de toda a liberdade para estudar o que bem quisesse, não precisei ter nenhuma preocupação com meu sustento e portanto nenhuma preocupação, fosse qual fosse; não exigiste gratidão em troca disso, tu conheces “a gratidão de teus filhos”, mas pelo menos um pouco.",
   "O Modo Foco remove elementos da interface que competem pela atenção do usuário, deixando apenas o texto e a navegação essencial. Este modo é particularmente útil para leitores com TDAH.\n\nAo eliminar distrações visuais, o cérebro pode dedicar mais recursos cognitivos à compreensão do texto, melhorando a retenção de informações.",
   "A simplificação de texto utiliza técnicas de processamento de linguagem natural para reescrever parágrafos complexos em linguagem mais acessível.\n\nIsto não significa empobrecer o conteúdo, mas sim apresentá-lo de forma que respeite as diferentes formas de processamento cognitivo.",
   "A função de áudio complementa a leitura visual, ativando múltiplos canais sensoriais simultaneamente. Pesquisas indicam que a leitura multimodal melhora a compreensão em até 40%.\n\nCombinar texto visual com narração é especialmente eficaz para pessoas que processam informação de forma auditiva.",
+  " ",
+  " ",
 ];
 
 type Contrast = "default" | "high" | "sepia" | "dark";
@@ -66,7 +68,7 @@ const Reader = () => {
               <ChevronLeft size={20} />
             </Link>
             <h1 className="font-medium text-sm tracking-tight uppercase opacity-60">
-              Capítulo 1: Leitura Adaptativa
+              Capítulo 1: Carta Ao Pai
             </h1>
           </div>
           <div className="flex items-center gap-2">

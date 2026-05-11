@@ -13,9 +13,9 @@ interface TopBook {
 }
 
 const defaultTopBooks: TopBook[] = [
-  { id: "1", title: "Introdução à Psicologia Cognitiva" },
-  { id: "2", title: "Neurociência e Educação Inclusiva" },
-  { id: "3", title: "Design Universal para Aprendizagem" },
+  { id: "1", title: "O Pequeno Príncipe" },
+  { id: "2", title: "Carta Ao Pai" },
+  { id: "3", title: "A Hora Da Estrela" },
 ];
 
 interface UserProfilePopupProps {

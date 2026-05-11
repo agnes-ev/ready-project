@@ -1,24 +1,50 @@
-import { BookOpen, FileText, Plus, X } from "lucide-react";
+import { BookOpen, FileText, Plus, X, Pencil, Trash2, Check } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { Avatar } from "@radix-ui/react-avatar";
 import UserProfilePopup from "@/components/UserProfilePopup";
 
 interface Book {
   id: string;
   title: string;
   progress: number;
+  //uploadedAt: string;
+  file?: File;
 }
 
 const initialBooks: Book[] = [
-  { id: "1", title: "Introdução à Psicologia Cognitiva", progress: 45 },
-  { id: "2", title: "Design Universal para Aprendizagem", progress: 12 },
-  { id: "3", title: "Neurociência e Educação Inclusiva", progress: 78 },
+  { id: "1", title: "Carta Ao Pai", progress: 45 },
+  { id: "2", title: "A Hora Da Estrela", progress: 12 },
+  { id: "3", title: "O Pequeno Príncipe", progress: 78 },
 ];
 
 const Library = () => {
   const [books, setBooks] = useState<Book[]>(initialBooks);
   const [showUpload, setShowUpload] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+  const [isUploadHovered, setIsUploadHovered] = useState(false);
+
+  const startEdit = (book: Book) => {
+   setEditingId(book.id);
+   setEditingTitle(book.title);
+};
+
+  const saveEdit = () => {
+    if (!editingId) return;
+    const trimmed = editingTitle.trim();
+    if (trimmed.length === 0) {
+     setEditingId(null);
+     return;
+  }
+  setBooks((prev) => prev.map((b) => (b.id === editingId ? { ...b, title: trimmed } : b)));
+  setEditingId(null);
+};
+
+  const handleDelete = (id: string) => {
+  if (window.confirm("Tem certeza que deseja apagar este livro da biblioteca?")) {
+    setBooks((prev) => prev.filter((b) => b.id !== id));
+  }
+};
 
   const handleFileUpload = (file: File) => {
     const newBook: Book = {
@@ -45,10 +71,6 @@ const Library = () => {
               Sair
             </Link>
           </div>
-      
-
-        
-       
         </div>
       </header>
 
@@ -69,7 +91,14 @@ const Library = () => {
 
         {/* Upload modal inline */}
         {showUpload && (
-          <div className="relative bg-card p-10 rounded-3xl shadow-smooth border-2 border-dashed border-border hover:border-primary/40 transition-smooth cursor-pointer">
+          <div
+            className="relative bg-card p-10 rounded-3xl shadow-smooth border-2 border-dashed transition-smooth cursor-pointer"
+            style={{
+              borderColor: isUploadHovered ? '#87ceeb' : 'rgba(97,218,251,0.67)'
+            }}
+            onMouseEnter={() => setIsUploadHovered(true)}
+            onMouseLeave={() => setIsUploadHovered(false)}
+          >
             <button
               onClick={() => setShowUpload(false)}
               className="absolute top-4 right-4 p-2 hover:bg-secondary rounded-full transition-smooth z-10"
@@ -115,14 +144,29 @@ const Library = () => {
             {books.map((book) => (
               <div
                 key={book.id}
-                className="bg-card shadow-smooth rounded-2xl p-6 flex items-center justify-between hover:shadow-focus transition-smooth"
+                className="bg-card rounded-2xl p-6 flex items-center justify-between border-2 border-transparent hover:border-primary/40 transition-smooth"
               >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
                     <BookOpen size={22} />
                   </div>
                   <div>
-                    <h3 className="font-semibold text-foreground">{book.title}</h3>
+                    {editingId === book.id ? (
+                      <input
+                        autoFocus
+                        value={editingTitle}
+                        onChange={(e) => setEditingTitle(e.target.value)}
+                        onBlur={saveEdit}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") saveEdit();
+                          if (e.key === "Escape") setEditingId(null);
+                        }}
+                        className="font-semibold text-foreground bg-background border-2 border-primary/40 rounded-md px-2 py-1 outline-none focus:border-primary transition-smooth"
+                      />
+                    ) : (
+                      <h3 className="font-semibold text-foreground">{book.title}</h3>
+                    )}
+
                     <div className="flex items-center gap-3 mt-1">
                       <div className="w-32 h-1.5 bg-secondary rounded-full overflow-hidden">
                         <div
@@ -136,12 +180,41 @@ const Library = () => {
                     </div>
                   </div>
                 </div>
+                  <div className="flex items-center gap-3 ml-auto">
+                   {editingId === book.id ? (
+                    <button 
+                      onClick={saveEdit} 
+                      aria-label="Salvar nome" 
+                      className="p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-smooth"
+                    >
+                     <Check size={18} />
+
+                    </button>
+                  ) : (
+                    <button 
+                     onClick={() => startEdit(book)} 
+                     aria-label="Editar nome do livro"
+                     className="p-2 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10 transition-smooth"
+                    >
+                     <Pencil size={18} />
+                    </button>
+                  )}
+
+                  <button
+                    onClick={() => handleDelete(book.id)}
+                    aria-label="Apagar livro"
+                    className="p-2 ml-1000 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+
                 <Link
-                  to="/reader"
+                  to={`/reader/${book.id}`}
                   className="px-5 py-2.5 bg-foreground text-background rounded-full text-sm font-medium hover:opacity-90 transition-smooth"
                 >
                   Continuar leitura
                 </Link>
+                </div>
               </div>
             ))}
           </div>

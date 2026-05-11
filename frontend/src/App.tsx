@@ -23,7 +23,7 @@ const App = () => (
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/library" element={<Library />} />
-          <Route path="/reader" element={<Reader />} />
+          <Route path="/reader/:id" element={<Reader />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

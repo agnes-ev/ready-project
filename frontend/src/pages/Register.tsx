@@ -23,14 +23,14 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6">
+    <div className="min-h-screen bg-background flex items-center justify-center px-6 relative top-[10px]">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Criar conta</h1>
           <p className="text-muted-foreground">Comece sua jornada de leitura adaptativa</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-card shadow-smooth rounded-2xl p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="bg-card shadow-smooth rounded-2xl p-8 space-y-6 relative top-[-15px]">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground block">Nome</label>
             <input
@@ -75,7 +75,7 @@ const Register = () => {
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
-            <ul className="text-xs list-disc list-inside space-y-1">
+            <ul className="text-xs list-disc list-inside space-y-1 relative top-[6px]">
               <li className={isLongEnough ? "text-emerald-500" : "text-destructive"}>
                 Senha de no mínimo de 6 caracteres
               </li>
@@ -97,19 +97,19 @@ const Register = () => {
           <button
             type="submit"
             disabled={!isPasswordValid}
-            className={`w-full py-3 rounded-xl font-medium transition-smooth ${isPasswordValid ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed"}`}
+            className={`w-full py-3 rounded-xl font-medium transition-smooth relative top-[-4px] ${isPasswordValid ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed "}`}
           >
             Cadastrar
           </button>
         </form>
 
-        <p className="text-center text-sm text-muted-foreground">
+        <p className="text-center text-sm text-muted-foreground relative top-[-35px]">
           Já tem uma conta?{" "}
           <Link to="/login" className="text-primary font-medium hover:underline">
             Entrar
           </Link>
         </p>
-        <p className="text-center text-xs text-muted-foreground">
+        <p className="text-center text-xs text-muted-foreground relative top-[-60px] ">
           Ao criar sua conta, você concorda com os Termos de Uso.
         </p>
       </div>
