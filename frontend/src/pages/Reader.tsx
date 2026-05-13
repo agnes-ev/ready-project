@@ -1,18 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Sparkles, Volume2 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
+import { pdfjs } from "react-pdf";
+import pdfWorker from "pdfjs-dist/build/pdf.worker?url";
+import { useBooks } from "@/context/BooksContext";
+import { uploadPdf } from "../services/pdfService";
 
-const content = [
-  "    Querido pai, Tu me perguntaste recentemente por que afirmo ter medo de ti. Eu não soube, como de costume, o que te responder, em parte justamente pelo medo que tenho de ti, em parte porque existem tantos detalhes na justificativa desse medo, que eu não poderia reuni-los no ato de falar de modo mais ou menos coerente. E se procuro responder-te aqui por escrito, não deixará de ser de modo incompleto, porque também no ato de escrever o medo e suas conseqüências me atrapalham diante de ti e porque a grandeza do tema ultrapassa de longe minha memória e meu entendimento.",
-  "    Para ti a questão sempre se apresentou bem simples, pelo menos enquanto falaste dela diante de mim e, sem cuidar a quem, diante de muitos outros. Para ti as coisas pareciam ser mais ou menos assim: trabalhaste pesado durante tua vida inteira, sacrificaste tudo pelos teus filhos, e sobretudo por mim, enquanto eu “vivi numa boa” por conta disso, gozei de toda a liberdade para estudar o que bem quisesse, não precisei ter nenhuma preocupação com meu sustento e portanto nenhuma preocupação, fosse qual fosse; não exigiste gratidão em troca disso, tu conheces “a gratidão de teus filhos”, mas pelo menos um pouco.",
-  "O Modo Foco remove elementos da interface que competem pela atenção do usuário, deixando apenas o texto e a navegação essencial. Este modo é particularmente útil para leitores com TDAH.\n\nAo eliminar distrações visuais, o cérebro pode dedicar mais recursos cognitivos à compreensão do texto, melhorando a retenção de informações.",
-  "A simplificação de texto utiliza técnicas de processamento de linguagem natural para reescrever parágrafos complexos em linguagem mais acessível.\n\nIsto não significa empobrecer o conteúdo, mas sim apresentá-lo de forma que respeite as diferentes formas de processamento cognitivo.",
-  "A função de áudio complementa a leitura visual, ativando múltiplos canais sensoriais simultaneamente. Pesquisas indicam que a leitura multimodal melhora a compreensão em até 40%.\n\nCombinar texto visual com narração é especialmente eficaz para pessoas que processam informação de forma auditiva.",
-  " ",
-  " ",
-];
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
+
+// Define contrast types for theming
 
 type Contrast = "default" | "high" | "sepia" | "dark";
+
 
 const themeClasses: Record<Contrast, string> = {
   default: "bg-background text-foreground",
@@ -42,7 +41,55 @@ const accentBtnClasses: Record<Contrast, string> = {
   dark: "bg-[hsl(205,50%,45%)] text-white",
 };
 
+// Main Reader component
+
 const Reader = () => {
+  const { id } = useParams();
+  const { books } = useBooks();
+  const book = books.find((b) => b.id === id);
+  const [pagesText, setPagesText] = useState<string[]>([]);
+  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+
+useEffect(() => {
+  if (!book) return;
+
+  if (book.blocks && book.blocks.length > 0) {
+    const text = book.blocks
+      .map((block) => block.originalText)
+      .join("\n\n");
+
+    setPagesText([text]);
+    setCurrentPage(0);
+    return;
+  }
+
+  if (!book.file) return;
+
+  const extractText = async () => {
+    setIsLoadingPdf(true);
+
+    try {
+      const data = await uploadPdf(book.file);
+
+      const text = data.blocks
+        ?.map((block: { originalText: string }) => block.originalText)
+        .join("\n\n");
+
+      setPagesText([
+        text || "Não foi possível extrair texto deste PDF."
+      ]);
+
+      setCurrentPage(0);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoadingPdf(false);
+    }
+  };
+
+  extractText();
+}, [book]);
+
   const [settings, setSettings] = useState({
     fontSize: 18,
     lineHeight: 1.6,
@@ -53,7 +100,9 @@ const Reader = () => {
     bold: false,
     italic: false,
   });
+
   const [currentPage, setCurrentPage] = useState(0);
+  const totalPages = pagesText.length || 1;
   const [showSettings, setShowSettings] = useState(true);
 
   const accent = accentBtnClasses[settings.contrast];
@@ -64,12 +113,17 @@ const Reader = () => {
       {!settings.focusMode && (
         <header className={`h-16 flex items-center justify-between px-8 border-b backdrop-blur-md sticky top-0 z-10 ${panelClasses[settings.contrast]}`}>
           <div className="flex items-center gap-4">
-            <Link to="/library" className={`p-2 ${btnClasses[settings.contrast]} rounded-full transition-smooth`}>
+
+
+            <Link to={book?.temporary ? "/" : "/library"} className={`p-2 ${btnClasses[settings.contrast]} rounded-full transition-smooth`}>
               <ChevronLeft size={20} />
             </Link>
             <h1 className="font-medium text-sm tracking-tight uppercase opacity-60">
-              Capítulo 1: Carta Ao Pai
+              {book?.title ?? "Leitor"}
             </h1>
+
+
+
           </div>
           <div className="flex items-center gap-2">
             <button className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}>
@@ -101,14 +155,30 @@ const Reader = () => {
               maxWidth: "65ch",
             }}
           >
-            {content[currentPage].split("\n\n").map((para, i) => (
-              <p key={i} className="mb-8">
-                {para}
+
+            {/*Extraça~o de texto pdf*/}
+          
+            {isLoadingPdf ? (
+              <p className="text-center opacity-60">
+                Extraindo texto do PDF...
               </p>
-            ))}
+            ) : (
+              <div>
+                {(pagesText[currentPage] || "Nenhum texto encontrado nesta página.")
+                  .split(". ")
+                  .map((sentence, i) => (
+                    <p key={i} className="mb-6">
+                      {sentence.trim()}
+                      {sentence.trim() && "."}
+                    </p>
+                  ))}
+              </div>
+            )}
+              
           </div>
 
           {/* Page navigation */}
+
           <div className={`fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-6 shadow-smooth rounded-full px-6 py-3 z-20 ${panelClasses[settings.contrast]}`}>
             <button
               onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
@@ -118,12 +188,12 @@ const Reader = () => {
               <ChevronLeft size={24} />
             </button>
             <span className="text-sm font-medium tabular-nums">
-              {currentPage + 1} / {content.length}
+              {currentPage + 1} / {totalPages}
             </span>
             <button
-              onClick={() => setCurrentPage(Math.min(content.length - 1, currentPage + 1))}
+              onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
               className={`p-2 ${btnClasses[settings.contrast]} rounded-full disabled:opacity-30 transition-smooth`}
-              disabled={currentPage === content.length - 1}
+              disabled={currentPage === totalPages - 1}
             >
               <ChevronRight size={24} />
             </button>
@@ -131,6 +201,7 @@ const Reader = () => {
         </main>
 
         {/* Settings panel */}
+
         {showSettings && !settings.focusMode && (
           <aside className={`fixed right-6 top-24 w-72 shadow-smooth rounded-2xl p-6 z-20 ${panelClasses[settings.contrast]}`}>
             <h3 className="text-xs font-bold uppercase tracking-widest opacity-50 mb-6">

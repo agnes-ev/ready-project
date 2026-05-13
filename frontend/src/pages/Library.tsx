@@ -2,27 +2,18 @@ import { BookOpen, FileText, Plus, X, Pencil, Trash2, Check } from "lucide-react
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import UserProfilePopup from "@/components/UserProfilePopup";
+import { useBooks, type Book } from "@/context/BooksContext";
 
-interface Book {
-  id: string;
-  title: string;
-  progress: number;
-  //uploadedAt: string;
-  file?: File;
-}
-
-const initialBooks: Book[] = [
-  { id: "1", title: "Carta Ao Pai", progress: 45 },
-  { id: "2", title: "A Hora Da Estrela", progress: 12 },
-  { id: "3", title: "O Pequeno Príncipe", progress: 78 },
-];
 
 const Library = () => {
-  const [books, setBooks] = useState<Book[]>(initialBooks);
+
+  const { books, setBooks } = useBooks();
+  const libraryBooks = books.filter((book) => !book.temporary);
   const [showUpload, setShowUpload] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [isUploadHovered, setIsUploadHovered] = useState(false);
+
 
   const startEdit = (book: Book) => {
    setEditingId(book.id);
@@ -46,15 +37,55 @@ const Library = () => {
   }
 };
 
-  const handleFileUpload = (file: File) => {
+// Função para lidar com o upload do arquivo PDF, enviar para o backend e atualizar a biblioteca com os dados retornados
+
+ const handleFileUpload = async (file: File) => {
+  try {
+    const formData = new FormData();
+    formData.append("pdf", file);
+
+    const response = await fetch("http://localhost:3001/upload-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Erro ao enviar PDF para o backend");
+    }
+
+    const data = await response.json();
+
+    console.log("Resposta do backend:", data);
+
+// Criar um novo livro com os dados retornados e adicionar à biblioteca
+
     const newBook: Book = {
       id: String(Date.now()),
       title: file.name.replace(/\.pdf$/i, ""),
       progress: 0,
+      file,
+      blocks: data.blocks,
     };
-    setBooks([...books, newBook]);
+
+    setBooks((prev) => [newBook, ...prev]);
     setShowUpload(false);
-  };
+  } catch (error) {
+    console.error(error);
+    alert("Erro ao processar PDF");
+  }
+};
+
+// Função para mover o livro selecionado para o topo da lista quando o usuário clicar em "Continuar leitura"
+
+  const moveBookToTop = (id: string) => {
+  setBooks((prev) => {
+    const selectedBook = prev.find((book) => book.id === id);
+    const otherBooks = prev.filter((book) => book.id !== id);
+
+    return selectedBook ? [selectedBook, ...otherBooks] : prev;
+  });
+
+};
 
   return (
     <div className="min-h-screen bg-background">
@@ -78,8 +109,10 @@ const Library = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground">Minha Biblioteca</h1>
-            <p className="text-muted-foreground mt-1">{books.length} livros</p>
+            <p className="text-muted-foreground mt-1">{libraryBooks.length} livros</p>
           </div>
+
+          {libraryBooks.length > 0 && (
           <button
             onClick={() => setShowUpload(true)}
             className="flex items-center gap-2 px-6 py-3 bg-primary text-primary-foreground rounded-full font-medium hover:opacity-90 transition-smooth"
@@ -87,9 +120,13 @@ const Library = () => {
             <Plus size={18} />
             Adicionar livro
           </button>
+          )}
+
         </div>
 
         {/* Upload modal inline */}
+      
+
         {showUpload && (
           <div
             className="relative bg-card p-10 rounded-3xl shadow-smooth border-2 border-dashed transition-smooth cursor-pointer"
@@ -126,7 +163,7 @@ const Library = () => {
           </div>
         )}
 
-        {books.length === 0 ? (
+        {libraryBooks.length === 0 ? (
           <div className="text-center py-24 space-y-4">
             <BookOpen size={48} className="mx-auto text-muted-foreground/40" />
             <p className="text-lg text-muted-foreground">
@@ -141,7 +178,7 @@ const Library = () => {
           </div>
         ) : (
           <div className="grid gap-4">
-            {books.map((book) => (
+            {libraryBooks.map((book) => (
               <div
                 key={book.id}
                 className="bg-card rounded-2xl p-6 flex items-center justify-between border-2 border-transparent hover:border-primary/40 transition-smooth"
@@ -210,6 +247,7 @@ const Library = () => {
 
                 <Link
                   to={`/reader/${book.id}`}
+                  onClick={() => moveBookToTop(book.id)}
                   className="px-5 py-2.5 bg-foreground text-background rounded-full text-sm font-medium hover:opacity-90 transition-smooth"
                 >
                   Continuar leitura
