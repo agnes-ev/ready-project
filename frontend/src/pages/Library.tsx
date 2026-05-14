@@ -55,7 +55,7 @@ const Library = () => {
 
     const data = await response.json();
 
-    console.log("Resposta do backend:", data);
+    console.log("Blocos de rodapé:", data.blocks?.filter((block: any) => block.type === "footnote"));
 
 // Criar um novo livro com os dados retornados e adicionar à biblioteca
 

@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Maximize2, Sparkles, Volume2 } from "lucide-
 import { Link, useParams } from "react-router-dom";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker?url";
-import { useBooks } from "@/context/BooksContext";
+import { useBooks, Book } from "@/context/BooksContext";
 import { uploadPdf } from "../services/pdfService";
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -47,8 +47,167 @@ const Reader = () => {
   const { id } = useParams();
   const { books } = useBooks();
   const book = books.find((b) => b.id === id);
+
   const [pagesText, setPagesText] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(0);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
+
+  const [settings, setSettings] = useState({
+    fontSize: 18,
+    lineHeight: 1.6,
+    letterSpacing: 0,
+    contrast: "default" as Contrast,
+    focusMode: false,
+    fontFamily: "Arial",
+    bold: false,
+    italic: false,
+  });
+
+  const totalPages = pagesText.length || 1;
+  const accent = accentBtnClasses[settings.contrast];
+
+  // Group blocks by their page number for easier access during rendering
+
+  const blocksByPage = book?.blocks?.reduce((acc, block) => {
+  const page = block.page ?? 1;
+
+  if (!acc[page]) {
+    acc[page] = [];
+  }
+
+  acc[page].push(block);
+
+  return acc;
+}, {} as Record<number, NonNullable<Book["blocks"]>>);
+
+const pageNumbers = blocksByPage
+  ? Object.keys(blocksByPage)
+      .map(Number)
+      .sort((a, b) => a - b)
+  : [];
+
+const currentOriginalPage = pageNumbers[currentPage];
+
+const currentBlocks =
+  currentOriginalPage !== undefined
+    ? blocksByPage?.[currentOriginalPage] ?? []
+    : [];
+
+const readerTotalPages = pageNumbers.length || 1;
+
+// Function to render text with inline references 
+  const renderTextWithReferences = (text: string) => {
+  const parts = text.split(/([,.;:!?])(\d{1,2})(?=\s|$)/g);
+
+  return parts.map((part, index) => {
+    const previous = parts[index - 1];
+
+    if (/^\d{1,2}$/.test(part) && /[,.;:!?]/.test(previous || "")) {
+      return (
+        <sup
+          key={index}
+          className="text-xs text-muted-foreground ml-0.5 align-super"
+        >
+          {part}
+        </sup>
+      );
+    }
+
+    return part;
+  });
+};
+
+// Function to determine block styles based on settings and type
+const getBlockStyle = (scale = 1) => ({
+  fontSize: `${settings.fontSize * scale}px`,
+  lineHeight: settings.lineHeight,
+  letterSpacing: `${settings.letterSpacing}px`,
+  fontFamily: settings.fontFamily,
+  fontWeight: settings.bold ? "700" : "400",
+  fontStyle: settings.italic ? "italic" : "normal",
+});
+
+// Heuristic function to determine if a block should be rendered as a heading
+const shouldRenderBlockAsHeading = (
+  block: Book["blocks"][number],
+  index: number,
+  blocks: Book["blocks"]
+) => {
+  if (block.type !== "title") return false;
+
+  const text = block.originalText.trim();
+
+  const wordCount = text.split(/\s+/).length;
+  const endsLikeSentence = /[.!?,;:]$/.test(text);
+  const isAllCaps = text === text.toUpperCase() && /[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(text);
+
+  const looksLikeChapter =
+    /^(capítulo|capitulo|parte|livro|introdução|introducao|prefácio|prefacio|prólogo|prologo|epílogo|epilogo)\b/i.test(text);
+
+  const nextBlock = blocks[index + 1];
+  const previousBlock = blocks[index - 1];
+
+  const previousIsText =
+    previousBlock?.type === "paragraph" || previousBlock?.type === "text";
+
+  const nextIsText =
+    nextBlock?.type === "paragraph" || nextBlock?.type === "text";
+
+  const isSuspiciousSentenceFragment =
+    previousIsText && nextIsText && wordCount <= 6 && !isAllCaps && !looksLikeChapter;
+
+  if (isSuspiciousSentenceFragment) return false;
+
+  if (isAllCaps) return true;
+  if (looksLikeChapter) return true;
+
+  return wordCount <= 6 && !endsLikeSentence;
+};
+
+// Function to process blocks and determine which should be displayed, merging false titles into paragraphs
+const getDisplayBlocks = () => {
+  if (!book?.blocks) return [];
+
+  const displayBlocks: {
+    type: string;
+    originalText: string;
+    page: number | null;
+    sourceType: string;
+    order: number;
+  }[] = [];
+
+  book.blocks.forEach((block, index) => {
+    const shouldBeHeading = shouldRenderBlockAsHeading(
+      block,
+      index,
+      book.blocks!
+    );
+
+    const isFalseTitle = block.type === "title" && !shouldBeHeading;
+
+    if (isFalseTitle) {
+      const lastBlock = displayBlocks[displayBlocks.length - 1];
+
+      if (lastBlock && lastBlock.type === "paragraph_fragment") {
+        lastBlock.originalText += " " + block.originalText;
+      } else {
+        displayBlocks.push({
+          ...block,
+          type: "paragraph_fragment",
+        });
+      }
+
+      return;
+    }
+
+    displayBlocks.push(block);
+  });
+
+  return displayBlocks;
+};
+
+const displayBlocks = getDisplayBlocks();
 
 useEffect(() => {
   if (!book) return;
@@ -89,23 +248,6 @@ useEffect(() => {
 
   extractText();
 }, [book]);
-
-  const [settings, setSettings] = useState({
-    fontSize: 18,
-    lineHeight: 1.6,
-    letterSpacing: 0,
-    contrast: "default" as Contrast,
-    focusMode: false,
-    fontFamily: "Arial",
-    bold: false,
-    italic: false,
-  });
-
-  const [currentPage, setCurrentPage] = useState(0);
-  const totalPages = pagesText.length || 1;
-  const [showSettings, setShowSettings] = useState(true);
-
-  const accent = accentBtnClasses[settings.contrast];
 
   return (
     <div className={`min-h-screen transition-smooth ${themeClasses[settings.contrast]}`}>
@@ -162,20 +304,79 @@ useEffect(() => {
               <p className="text-center opacity-60">
                 Extraindo texto do PDF...
               </p>
-            ) : (
-              <div>
-                {(pagesText[currentPage] || "Nenhum texto encontrado nesta página.")
-                  .split(". ")
-                  .map((sentence, i) => (
-                    <p key={i} className="mb-6">
-                      {sentence.trim()}
-                      {sentence.trim() && "."}
+            ) : book?.blocks && book.blocks.length > 0 ? (
+
+             <div className="space-y-5">
+
+              {displayBlocks.map((block, i) => {
+                const shouldBeHeading = shouldRenderBlockAsHeading(
+                  block,
+                  i,
+                  displayBlocks!
+                );
+
+                const titleIndex = displayBlocks
+                  .slice(0, i + 1)
+                  .filter((item) => item.type === "title").length;
+
+                if (shouldBeHeading) {
+                  if (titleIndex === 1) {
+                    return (
+                      <h1
+                        key={i}
+                        style={getBlockStyle(1.7)}
+                        className="text-center mb-8 font-bold"
+                      >
+                        {renderTextWithReferences(block.originalText)}
+                      </h1>
+                    );
+                  }
+
+                  return (
+                    <h2
+                      key={i}
+                      style={getBlockStyle(1.25)}
+                      className="text-center mb-4 font-semibold"
+                    >
+                      {renderTextWithReferences(block.originalText)}
+                    </h2>
+                  );
+                }
+
+                if (block.type === "footnote") {
+                  return (
+                    <p
+                      key={i}
+                      style={getBlockStyle(0.82)}
+                      className="text-justify border-l-2 pl-4 text-muted-foreground border-border"
+                    >
+                      {renderTextWithReferences(block.originalText)}
                     </p>
-                  ))}
-              </div>
+                  );
+                }
+
+                return (
+                  <p
+                    key={i}
+                    style={getBlockStyle(1)}
+                    className="text-justify mb-6"
+                  >
+                    {renderTextWithReferences(block.originalText)}
+                  </p>
+                );
+              })}
+           
+            </div>
+            ) : (
+              <p className="text-center opacity-60">
+                Nenhum texto encontrado nesta página.
+              </p>
             )}
               
-          </div>
+            </div>
+
+{/* Page navigation */}
+
 
           {/* Page navigation */}
 
@@ -268,7 +469,7 @@ useEffect(() => {
                 <input
                   type="range"
                   min="14"
-                  max="32"
+                  max="34"
                   value={settings.fontSize}
                   onChange={(e) => setSettings({ ...settings, fontSize: parseInt(e.target.value) })}
                   className="w-full h-1.5 rounded-lg appearance-none cursor-pointer accent-primary"
@@ -282,8 +483,8 @@ useEffect(() => {
                 <div className="flex gap-2">
                   {[
                     { val: 1.5, label: "P" },
-                    { val: 1.8, label: "M" },
-                    { val: 2.2, label: "G" },
+                    { val: 2.0, label: "M" },
+                    { val: 2.5, label: "G" },
                   ].map(({ val, label }) => (
                     <button
                       key={val}
@@ -308,7 +509,7 @@ useEffect(() => {
                 <input
                   type="range"
                   min="0"
-                  max="0.15"
+                  max="4"
                   step="0.01"
                   value={settings.letterSpacing}
                   onChange={(e) =>
