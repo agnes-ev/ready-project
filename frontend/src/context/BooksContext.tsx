@@ -14,6 +14,7 @@ export interface Book {
   progress: number;
   file?: File;
   temporary?: boolean;
+  favorite?: boolean;
   blocks?: BookBlock[];
 }
 
@@ -24,23 +25,7 @@ interface BooksContextType {
 
 const BooksContext = createContext<BooksContextType | undefined>(undefined);
 
-const initialBooks: Book[] = [
-  {
-    id: "1",
-    title: "Carta ao Pai",
-    progress: 45,
-  },
-  {
-    id: "2",
-    title: "A Hora da Estrela",
-    progress: 12,
-  },
-  {
-    id: "3",
-    title: "O Pequeno Príncipe",
-    progress: 78,
-  },
-];
+const initialBooks: Book[] = [];
 
 export const BooksProvider = ({ children }: { children: ReactNode }) => {
   const [books, setBooks] = useState<Book[]>(initialBooks);

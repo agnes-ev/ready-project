@@ -1,44 +1,26 @@
 import { useState, useRef } from "react";
-import { User, BookOpen, Star, Edit2, Check, Camera } from "lucide-react";
+import { User, BookOpen, Camera, LogOut } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Link } from "react-router-dom";
+import type { Book } from "@/context/BooksContext";
 
-interface TopBook {
-  id: string;
-  title: string;
-}
-
-const defaultTopBooks: TopBook[] = [
-  { id: "1", title: "O Pequeno Príncipe" },
-  { id: "2", title: "Carta Ao Pai" },
-  { id: "3", title: "A Hora Da Estrela" },
-];
 
 interface UserProfilePopupProps {
-  booksReadCount?: number;
-  userName?: string;
+  userName: string;
+  booksReadCount: number;
+  favoriteBooks?: Book[];
 }
 
-const UserProfilePopup = ({ booksReadCount = 7, userName = "Usuário" }: UserProfilePopupProps) => {
-  const [topBooks, setTopBooks] = useState<TopBook[]>(defaultTopBooks);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
+const UserProfilePopup = ({
+  userName,
+  booksReadCount,
+  favoriteBooks = [],
+}: UserProfilePopupProps) => {
+
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const startEditing = (book: TopBook) => {
-    setEditingId(book.id);
-    setEditValue(book.title);
-  };
-
-  const saveEdit = (id: string) => {
-    setTopBooks(topBooks.map((b) => (b.id === id ? { ...b, title: editValue } : b)));
-    setEditingId(null);
-  };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -51,18 +33,20 @@ const UserProfilePopup = ({ booksReadCount = 7, userName = "Usuário" }: UserPro
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-smooth cursor-pointer">
-          <Avatar className="h-8 w-8">
+        <button className="flex items-center gap-3 text-base text-muted-foreground hover:text-foreground transition-smooth cursor-pointer">
+          <Avatar className="h-11 w-11">
             {avatarUrl && <AvatarImage src={avatarUrl} alt={userName} />}
             <AvatarFallback className="bg-primary/10 text-primary">
-              <User size={18} />
+              <User size={24} />
             </AvatarFallback>
           </Avatar>
           <span className="hidden sm:inline">{userName}</span>
         </button>
       </PopoverTrigger>
+
       <PopoverContent className="w-80 p-0 rounded-2xl shadow-smooth border-border" align="end" sideOffset={8}>
         <div className="p-6 space-y-5">
+
           {/* User Info */}
           <div className="flex flex-col items-center gap-3">
             <div className="relative group">
@@ -88,7 +72,6 @@ const UserProfilePopup = ({ booksReadCount = 7, userName = "Usuário" }: UserPro
             </div>
             <div className="text-center">
               <p className="font-bold text-foreground text-lg">{userName}</p>
-              <p className="text-sm text-muted-foreground">Leitor dedicado</p>
             </div>
           </div>
 
@@ -103,54 +86,36 @@ const UserProfilePopup = ({ booksReadCount = 7, userName = "Usuário" }: UserPro
 
           {/* Top 3 */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Star size={16} className="text-primary" />
-              <h4 className="font-semibold text-foreground text-sm">Top 3 Livros</h4>
-            </div>
-            <div className="space-y-2">
-              {topBooks.map((book, index) => (
-                <div
-                  key={book.id}
-                  className="flex items-center gap-3 bg-card rounded-xl p-3 border border-border group"
-                >
-                  <span className="text-xs font-bold text-primary bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center shrink-0">
-                    {index + 1}
-                  </span>
-                  {editingId === book.id ? (
-                    <div className="flex-1 flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="flex-1 text-sm bg-secondary rounded-lg px-2 py-1 text-foreground border-0 outline-none focus:ring-2 focus:ring-primary/30"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") saveEdit(book.id);
-                          if (e.key === "Escape") setEditingId(null);
-                        }}
-                      />
-                      <button
-                        onClick={() => saveEdit(book.id)}
-                        className="text-primary hover:text-primary/80 transition-smooth"
-                      >
-                        <Check size={14} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="flex-1 text-sm text-foreground truncate">{book.title}</span>
-                      <button
-                        onClick={() => startEditing(book)}
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-smooth"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              ))}
+            <h3 className="text-sm font-semibold text-foreground">
+              Favoritos
+            </h3>
+
+            <div className="max-h-40 overflow-y-auto pr-1 space-y-2">
+              {favoriteBooks.length > 0 ? (
+                favoriteBooks.map((book) => (
+                  <div
+                    key={book.id}
+                    className="px-3 py-2 rounded-xl bg-secondary/60 text-sm text-foreground"
+                  >
+                    {book.title}
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum livro favoritado ainda.
+                </p>
+              )}
             </div>
           </div>
+
+          {/*Logout*/}
+          <Link
+            to="/"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-smooth"
+          >
+            <LogOut size={16} />
+            Sair da conta
+          </Link>
         </div>
       </PopoverContent>
     </Popover>

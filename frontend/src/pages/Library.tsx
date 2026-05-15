@@ -1,4 +1,4 @@
-import { BookOpen, FileText, Plus, X, Pencil, Trash2, Check } from "lucide-react";
+import { BookOpen, FileText, Plus, X, Pencil, Trash2, Check, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import UserProfilePopup from "@/components/UserProfilePopup";
@@ -13,6 +13,7 @@ const Library = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [isUploadHovered, setIsUploadHovered] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
 
   const startEdit = (book: Book) => {
@@ -41,6 +42,9 @@ const Library = () => {
 
  const handleFileUpload = async (file: File) => {
   try {
+
+    setIsUploading(true);
+
     const formData = new FormData();
     formData.append("pdf", file);
 
@@ -55,10 +59,9 @@ const Library = () => {
 
     const data = await response.json();
 
-    console.log("Blocos de rodapé:", data.blocks?.filter((block: any) => block.type === "footnote"));
+    console.log("Resposta do backend:", data);
 
 // Criar um novo livro com os dados retornados e adicionar à biblioteca
-
     const newBook: Book = {
       id: String(Date.now()),
       title: file.name.replace(/\.pdf$/i, ""),
@@ -72,6 +75,8 @@ const Library = () => {
   } catch (error) {
     console.error(error);
     alert("Erro ao processar PDF");
+  } finally {
+    setIsUploading(false);
   }
 };
 
@@ -89,18 +94,40 @@ const Library = () => {
 
   return (
     <div className="min-h-screen bg-background">
+
+      {/* Tela de carregamento durante o processamento do PDF */}
+      {isUploading && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-card border border-border rounded-2xl shadow-smooth px-8 py-6 text-center space-y-3">
+            <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+
+            <div>
+              <p className="font-semibold text-foreground">
+                Processando PDF...
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Isso pode levar alguns segundos.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-card/50 backdrop-blur-md border-b border-border sticky top-0 z-10">
         <div className="w-full pl-6 pr-6 h-16 flex items-center justify-between">
+
           <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-smooth">
             <img src="/Logo/logo2-v3.png" alt="Logo" className="w-14 h-15 object-contain" />
             <span className="font-bold text-foreground tracking-tight mt-2 text-4xl">Read.y</span>
           </Link>
-          <div className="flex items-center gap-4">
-            <UserProfilePopup userName="Usuário" booksReadCount={3} />
-            <Link to="/" className="text-sm text-muted-foreground hover:text-foreground transition-smooth">
-              Sair
-            </Link>
+
+          <div className="flex items-center gap-4 mr-2">
+           <UserProfilePopup
+              userName="Usuário"
+              booksReadCount={libraryBooks.filter((book) => book.progress >= 100).length}
+              favoriteBooks={libraryBooks.filter((book) => book.favorite)}
+           />
           </div>
         </div>
       </header>
@@ -125,8 +152,6 @@ const Library = () => {
         </div>
 
         {/* Upload modal inline */}
-      
-
         {showUpload && (
           <div
             className="relative bg-card p-10 rounded-3xl shadow-smooth border-2 border-dashed transition-smooth cursor-pointer"
@@ -178,11 +203,40 @@ const Library = () => {
           </div>
         ) : (
           <div className="grid gap-4">
+
+            {/* favoritar livro*/}
             {libraryBooks.map((book) => (
-              <div
-                key={book.id}
-                className="bg-card rounded-2xl p-6 flex items-center justify-between border-2 border-transparent hover:border-primary/40 transition-smooth"
-              >
+              <div key={book.id} className="flex items-center gap-3">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    setBooks((prev) =>
+                      prev.map((item) =>
+                        item.id === book.id
+                          ? { ...item, favorite: !item.favorite }
+                          : item
+                      )
+                    );
+                  }}
+                  aria-label={book.favorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
+                  className="shrink-0 p-2 rounded-full text-muted-foreground hover:text-yellow-400 hover:bg-yellow-400/10 transition-smooth"
+                >
+                  <Star
+                    size={22}
+                    className={
+                      book.favorite
+                        ? "fill-yellow-400 text-yellow-400"
+                        : "text-muted-foreground"
+                    }
+                  />
+                </button>
+
+                 {/* Editar e apagar livro */}
+                <div
+                  className="flex-1 bg-card rounded-2xl p-6 flex items-center justify-between border-2 border-transparent hover:border-primary/40 transition-smooth"
+                >
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
                     <BookOpen size={22} />
@@ -254,6 +308,7 @@ const Library = () => {
                 </Link>
                 </div>
               </div>
+             </div>
             ))}
           </div>
         )}

@@ -1,31 +1,74 @@
 import { FileText } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useBooks } from "@/context/BooksContext";
 
 
 
 const Index = () => {
+
   const navigate = useNavigate();
   const { setBooks } = useBooks();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
- const handleFileUpload = (file: File) => {
-  const tempBook = {
-    id: String(Date.now()),
-    title: file.name.replace(/\.pdf$/i, ""),
-    progress: 0,
-    file,
-    temporary: true,
-  };
+ const handleFileUpload = async (file: File) => {
+  try {
 
-  setBooks((prev) => [...prev, tempBook]);
+    setIsUploading(true);
 
-  navigate(`/reader/${tempBook.id}`);
+    const formData = new FormData();
+    formData.append("pdf", file);
+
+    const response = await fetch("http://localhost:3001/upload-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Erro ao enviar PDF para o backend");
+    }
+
+    const data = await response.json();
+
+    const tempBook = {
+      id: String(Date.now()),
+      title: file.name.replace(/\.pdf$/i, ""),
+      progress: 0,
+      file,
+      blocks: data.blocks,
+      temporary: true,
+    };
+
+    setBooks((prev) => [...prev, tempBook]);
+
+    navigate(`/reader/${tempBook.id}`);
+  } catch (error) {
+    console.error(error);
+    alert("Erro ao processar PDF");
+  } finally {
+    setIsUploading(false);
+  }
 };
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-6">
+      {isUploading && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="bg-card border border-border rounded-2xl shadow-smooth px-8 py-6 text-center space-y-3">
+            <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+
+            <div>
+              <p className="font-semibold text-foreground">
+                Processando PDF...
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Isso pode levar alguns segundos.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-2xl w-full text-center space-y-8">
         <div>
           <div className="flex items-center justify-center gap-3">

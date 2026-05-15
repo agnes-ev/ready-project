@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Sparkles, Volume2 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { pdfjs } from "react-pdf";
 import pdfWorker from "pdfjs-dist/build/pdf.worker?url";
 import { useBooks, Book } from "@/context/BooksContext";
-import { uploadPdf } from "../services/pdfService";
+
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -45,56 +45,27 @@ const accentBtnClasses: Record<Contrast, string> = {
 
 const Reader = () => {
   const { id } = useParams();
-  const { books } = useBooks();
+  const { books, setBooks } = useBooks();
   const book = books.find((b) => b.id === id);
 
-  const [pagesText, setPagesText] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(0);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
+  const readerContentRef = useRef<HTMLDivElement | null>(null);
 
   const [settings, setSettings] = useState({
     fontSize: 18,
     lineHeight: 1.6,
     letterSpacing: 0,
     contrast: "default" as Contrast,
+    readingMode: "page" as "scroll" | "page",
     focusMode: false,
     fontFamily: "Arial",
     bold: false,
     italic: false,
   });
 
-  const totalPages = pagesText.length || 1;
   const accent = accentBtnClasses[settings.contrast];
-
-  // Group blocks by their page number for easier access during rendering
-
-  const blocksByPage = book?.blocks?.reduce((acc, block) => {
-  const page = block.page ?? 1;
-
-  if (!acc[page]) {
-    acc[page] = [];
-  }
-
-  acc[page].push(block);
-
-  return acc;
-}, {} as Record<number, NonNullable<Book["blocks"]>>);
-
-const pageNumbers = blocksByPage
-  ? Object.keys(blocksByPage)
-      .map(Number)
-      .sort((a, b) => a - b)
-  : [];
-
-const currentOriginalPage = pageNumbers[currentPage];
-
-const currentBlocks =
-  currentOriginalPage !== undefined
-    ? blocksByPage?.[currentOriginalPage] ?? []
-    : [];
-
-const readerTotalPages = pageNumbers.length || 1;
 
 // Function to render text with inline references 
   const renderTextWithReferences = (text: string) => {
@@ -209,48 +180,98 @@ const getDisplayBlocks = () => {
 
 const displayBlocks = getDisplayBlocks();
 
+
+
+
+
+
+
+
+const pdfPageNumbers = Array.from(
+  new Set(
+    displayBlocks
+      .map((block) => block.page ?? 1)
+      .filter((page) => page !== null)
+  )
+).sort((a, b) => a - b);
+
+const readerTotalPages =
+  settings.readingMode === "page"
+    ? pdfPageNumbers.length || 1
+    : 1;
+
+const currentPdfPage = pdfPageNumbers[currentPage] ?? 1;
+
+const visibleBlocks =
+  settings.readingMode === "page"
+    ? displayBlocks.filter((block) => (block.page ?? 1) === currentPdfPage)
+    : displayBlocks;
+
+const totalPages = readerTotalPages;
+
+// Effect para extrair texto do PDF quando o componente é montado ou quando o livro muda
 useEffect(() => {
   if (!book) return;
 
-  if (book.blocks && book.blocks.length > 0) {
-    const text = book.blocks
-      .map((block) => block.originalText)
-      .join("\n\n");
+  setCurrentPage(0);
+}, [book?.id]);
 
-    setPagesText([text]);
-    setCurrentPage(0);
-    return;
-  }
+// Effect para atualizar o progresso de leitura do livro com base na página atual modo página
+useEffect(() => {
+  if (!book) return;
+  if (settings.readingMode !== "page") return;
+  if (!totalPages || totalPages <= 0) return;
 
-  if (!book.file) return;
+  const nextProgress = Math.min(
+    100,
+    Math.round(((currentPage + 1) / totalPages) * 100)
+  );
 
-  const extractText = async () => {
-    setIsLoadingPdf(true);
+  setBooks((prev) =>
+    prev.map((item) =>
+       item.id === book.id && nextProgress > item.progress
+        ? { ...item, progress: nextProgress }
+        : item
+    )
+  );
+}, [book?.id, currentPage, totalPages, settings.readingMode, setBooks]);
 
-    try {
-      const data = await uploadPdf(book.file);
+// Effect para atualizar o progresso de leitura do livro com base na posição de rolagem modo rolagem
+useEffect(() => {
+  if (!book) return;
+  if (settings.readingMode !== "scroll") return;
 
-      const text = data.blocks
-        ?.map((block: { originalText: string }) => block.originalText)
-        .join("\n\n");
+  const handleScroll = () => {
+    const scrollTop = window.scrollY;
+    const documentHeight =
+      document.documentElement.scrollHeight - window.innerHeight;
 
-      setPagesText([
-        text || "Não foi possível extrair texto deste PDF."
-      ]);
+    if (documentHeight <= 0) return;
 
-      setCurrentPage(0);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoadingPdf(false);
-    }
+    const scrollProgress = Math.round((scrollTop / documentHeight) * 100);
+
+    const nextProgress = Math.min(100, Math.max(0, scrollProgress));
+
+    setBooks((prev) =>
+      prev.map((item) =>
+        item.id === book.id && nextProgress > item.progress
+          ? { ...item, progress: nextProgress }
+          : item
+      )
+    );
   };
 
-  extractText();
-}, [book]);
+  window.addEventListener("scroll", handleScroll);
+  handleScroll();
+
+  return () => {
+    window.removeEventListener("scroll", handleScroll);
+  };
+}, [book?.id, settings.readingMode, setBooks]);
 
   return (
     <div className={`min-h-screen transition-smooth ${themeClasses[settings.contrast]}`}>
+
       {/* Header */}
       {!settings.focusMode && (
         <header className={`h-16 flex items-center justify-between px-8 border-b backdrop-blur-md sticky top-0 z-10 ${panelClasses[settings.contrast]}`}>
@@ -285,6 +306,7 @@ useEffect(() => {
       )}
 
       <div className="flex">
+
         {/* Main content */}
         <main className={`flex-1 pt-12 pb-32 px-6 ${showSettings && !settings.focusMode ? "mr-80" : ""}`}>
           <div
@@ -298,7 +320,7 @@ useEffect(() => {
             }}
           >
 
-            {/*Extraça~o de texto pdf*/}
+            {/*Extração de texto pdf*/}
           
             {isLoadingPdf ? (
               <p className="text-center opacity-60">
@@ -306,16 +328,17 @@ useEffect(() => {
               </p>
             ) : book?.blocks && book.blocks.length > 0 ? (
 
-             <div className="space-y-5">
+             <div ref={readerContentRef} className="space-y-5">
 
-              {displayBlocks.map((block, i) => {
+              {visibleBlocks.map((block, i) => {
+
                 const shouldBeHeading = shouldRenderBlockAsHeading(
                   block,
                   i,
-                  displayBlocks!
+                  visibleBlocks!
                 );
 
-                const titleIndex = displayBlocks
+                const titleIndex = visibleBlocks
                   .slice(0, i + 1)
                   .filter((item) => item.type === "title").length;
 
@@ -375,11 +398,9 @@ useEffect(() => {
               
             </div>
 
-{/* Page navigation */}
-
-
-          {/* Page navigation */}
-
+          
+          {/* Navegação de páginas */}
+          {settings.readingMode === "page" && (
           <div className={`fixed bottom-12 left-1/2 -translate-x-1/2 flex items-center gap-6 shadow-smooth rounded-full px-6 py-3 z-20 ${panelClasses[settings.contrast]}`}>
             <button
               onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
@@ -399,17 +420,20 @@ useEffect(() => {
               <ChevronRight size={24} />
             </button>
           </div>
+        )}
+        
         </main>
 
-        {/* Settings panel */}
-
+        {/* Painel de configurações */}
         {showSettings && !settings.focusMode && (
-          <aside className={`fixed right-6 top-24 w-72 shadow-smooth rounded-2xl p-6 z-20 ${panelClasses[settings.contrast]}`}>
+          <aside className={`fixed right-6 top-20 bottom-6 w-80 shadow-smooth rounded-2xl p-6 z-20 overflow-hidden ${panelClasses[settings.contrast]}`} >
+
             <h3 className="text-xs font-bold uppercase tracking-widest opacity-50 mb-6">
               Acessibilidade
             </h3>
 
-            <div className="space-y-7 max-h-[calc(100vh-180px)] overflow-y-auto pr-1">
+            <div className="space-y-7 h-[calc(100%-3rem)] overflow-y-auto pr-6 pb-4">
+
               {/* Font family */}
               <section>
                 <label className="text-sm font-medium block mb-3">Fonte</label>
@@ -535,6 +559,43 @@ useEffect(() => {
                       Aa
                     </button>
                   ))}
+                </div>
+              </section>
+
+              {/* Reading mode */}
+              <section>
+                <label className="text-sm font-medium block mb-3">Modo de leitura</label>
+
+                <div className="grid grid-cols-2 gap-2">
+
+                  <button
+                    onClick={() => {
+                      setSettings({ ...settings, readingMode: "page" });
+                      setCurrentPage(0);
+                    }}
+                    className={`px-3 py-2 rounded-md border text-sm transition-smooth ${
+                      settings.readingMode === "page"
+                        ? `border-current ${accent} font-semibold`
+                        : "border-current/20 opacity-60"
+                    }`}
+                  >
+                    Página
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSettings({ ...settings, readingMode: "scroll" });
+                      setCurrentPage(0);
+                    }}
+                    className={`px-3 py-2 rounded-md border text-sm transition-smooth ${
+                      settings.readingMode === "scroll"
+                        ? `border-current ${accent} font-semibold`
+                        : "border-current/20 opacity-60"
+                    }`}
+                  >
+                    Rolagem
+                  </button>
+
                 </div>
               </section>
 

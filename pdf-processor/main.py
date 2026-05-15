@@ -7,7 +7,6 @@ import re
 app = FastAPI()
 
 #Function to fix duplicated letters in the text
-
 def fix_duplicated_letters(text: str) -> str:
     words = text.split()
     fixed_words = []
@@ -56,7 +55,6 @@ def fix_duplicated_letters(text: str) -> str:
     return " ".join(fixed_words)
 
 #Function to fix hyphenated words in the text
-
 def fix_hyphenated_words(text: str) -> str:
     # Corrige casos como: afir- mo -> afirmo
     text = re.sub(r"(\w)-\s+(\w)", r"\1\2", text)
@@ -64,7 +62,6 @@ def fix_hyphenated_words(text: str) -> str:
     return text
 
 #Function to clean the extracted text by fixing duplicated letters, hyphenated words, and normalizing whitespace
-
 def clean_extracted_text(text: str) -> str:
     text = fix_duplicated_letters(text)
     text = fix_hyphenated_words(text)
@@ -73,7 +70,6 @@ def clean_extracted_text(text: str) -> str:
     return text
 
 #Function to determine if a text block is likely a page number based on its content and the page number metadata
-
 def is_page_number_block(text: str, page: int | None) -> bool:
     clean = text.strip()
 
@@ -86,7 +82,6 @@ def is_page_number_block(text: str, page: int | None) -> bool:
     return int(clean) == page or len(clean) <= 3
 
 #Function to remove trailing page numbers from text blocks, while preserving titles and common references
-
 def remove_trailing_page_number(text: str, category: str) -> str:
     clean = text.strip()
 
@@ -108,7 +103,6 @@ def remove_trailing_page_number(text: str, category: str) -> str:
     return clean
 
 #Function to map the block type based on the category
-
 def map_block_type(category: str) -> str:
     types = {
         "Title": "title",
@@ -123,7 +117,6 @@ def map_block_type(category: str) -> str:
     return types.get(category, "text")
 
 #Function to determine if a text block is likely a footnote based on its content and common patterns
-
 def is_footnote_block(text: str) -> bool:
     clean = text.strip()
 
@@ -138,8 +131,54 @@ def is_footnote_block(text: str) -> bool:
 
     return False
 
-#Endpoint to process the uploaded PDF file and return the structured data
+#Function to determine if a text block is likely garbage based on its content, category, and common patterns of noise in OCR'd PDFs
+def is_garbage_block(text: str, category: str) -> bool:
+    clean = text.strip()
 
+    if not clean:
+        return True
+
+    # Remove cabeçalhos, rodapés e números de página identificados pela biblioteca
+    if category in ["Header", "Footer", "PageNumber"]:
+        return True
+
+    # Remove blocos muito curtos sem valor
+    if len(clean) <= 2:
+        return True
+
+    tokens = clean.split()
+
+    if not tokens:
+        return True
+
+    # Detecta textos quebrados em letras soltas:
+    # Ex: "O T - s a m a P -"
+    single_char_tokens = [token for token in tokens if len(token) == 1]
+    single_char_ratio = len(single_char_tokens) / len(tokens)
+
+    if len(tokens) >= 5 and single_char_ratio > 0.45:
+        return True
+
+    # Detecta blocos com muitos símbolos/números e pouco texto real
+    letters = sum(char.isalpha() for char in clean)
+    digits = sum(char.isdigit() for char in clean)
+    punctuation = sum(not char.isalnum() and not char.isspace() for char in clean)
+
+    if len(clean) >= 10 and letters < 4 and (digits + punctuation) > letters:
+        return True
+
+    # Detecta texto muito espaçado/letra por letra
+    spaced_letters_pattern = re.search(r"(?:\b\w\b\s*){5,}", clean)
+    if spaced_letters_pattern:
+        return True
+
+    return False
+
+
+
+
+
+#Endpoint to process the uploaded PDF file and return the structured data
 @app.post("/process-pdf")
 async def process_pdf(file: UploadFile = File(...)):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp:
@@ -161,6 +200,9 @@ async def process_pdf(file: UploadFile = File(...)):
 
             processed_text = clean_extracted_text(str(element))
             processed_text = remove_trailing_page_number(processed_text, element.category)
+
+            if is_garbage_block(processed_text, element.category):
+                continue
             
             if not processed_text:
                 continue
