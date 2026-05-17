@@ -4,11 +4,13 @@ const multer = require("multer");
 const fs = require("fs");
 const axios = require("axios");
 const FormData = require("form-data");
+const prisma = require("./prisma");
 
 const app = express();
 const PORT = 3001;
 
 app.use(cors());
+app.use(express.json());
 
 const upload = multer({ dest: "uploads/" });
 
@@ -16,11 +18,18 @@ app.get("/", (req, res) => {
   res.send("Backend do Read.y funcionando!");
 });
 
+// Endpoint para upload de PDF
 app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
-  try {
-    const filePath = req.file.path;
+  let filePath;
 
-    console.log("PDF recebido no backend:", req.file.originalname);
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: "Nenhum arquivo PDF foi enviado.",
+      });
+    }
+
+    filePath = req.file.path;
 
     const form = new FormData();
     form.append("file", fs.createReadStream(filePath), req.file.originalname);
@@ -33,23 +42,280 @@ app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
       }
     );
 
-    console.log("Resposta recebida do Python:", pythonResponse.data.blocks?.length, "blocos");
+    const blocks = pythonResponse.data.blocks || [];
 
-    res.json({
-      title: req.file.originalname.replace(/\.pdf$/i, ""),
-      filename: pythonResponse.data.filename,
-      blocks: pythonResponse.data.blocks,
+    const savedDocument = await prisma.document.create({
+      data: {
+        title: req.file.originalname.replace(/\.pdf$/i, ""),
+        fileName: req.file.originalname,
+        blocks: {
+          create: blocks.map((block, index) => ({
+            order: block.order ?? index,
+            type: block.type ?? "paragraph",
+            originalText: block.originalText ?? "",
+            page: block.page ?? null,
+            sourceType: block.sourceType ?? null,
+          })),
+        },
+      },
+      include: {
+        blocks: true,
+      },
     });
 
+
+
+
+    res.json({
+      id: savedDocument.id,
+      title: savedDocument.title,
+      fileName: savedDocument.fileName,
+      filename: pythonResponse.data.filename,
+      progress: savedDocument.progress,
+      favorite: savedDocument.favorite,
+      blocks: savedDocument.blocks,
+    });
   } catch (error) {
-    console.error(error.message);
+    console.error(error);
 
     res.status(500).json({
       error: "Erro ao processar PDF",
       details: error.message,
     });
+  } finally {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
   }
 });
+
+// Endpoint para buscar todos os documentos
+app.get("/documents", async (req, res) => {
+  try {
+    const documents = await prisma.document.findMany({
+      orderBy: [
+        {
+          lastOpenedAt: "desc",
+        },
+        {
+          createdAt: "desc",
+        },
+      ],
+      include: {
+        blocks: true,
+      },
+    });
+
+    res.json(
+      documents.map((document) => ({
+        id: document.id,
+        title: document.title,
+        fileName: document.fileName,
+        progress: document.progress,
+        favorite: document.favorite,
+        blocks: document.blocks,
+      }))
+    );
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao buscar documentos",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para deletar um documento
+app.delete("/documents/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await prisma.document.delete({
+      where: { id },
+    });
+
+    res.json({
+      message: "Documento apagado com sucesso",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao apagar documento",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para atualizar o último acesso do documento
+app.patch("/documents/:id/open", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const document = await prisma.document.update({
+      where: { id },
+      data: {
+        lastOpenedAt: new Date(),
+      },
+      include: {
+        blocks: true,
+      },
+    });
+
+    res.json({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      progress: document.progress,
+      favorite: document.favorite,
+      blocks: document.blocks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao atualizar último acesso",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para atualizar o status de favorito do documento
+app.patch("/documents/:id/favorite", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { favorite } = req.body;
+
+    const document = await prisma.document.update({
+      where: { id },
+      data: {
+        favorite: Boolean(favorite),
+      },
+      include: {
+        blocks: true,
+      },
+    });
+
+    res.json({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      progress: document.progress ?? 0,
+      favorite: document.favorite,
+      blocks: document.blocks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao atualizar favorito",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para atualizar o título do documento
+app.patch("/documents/:id/title", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        error: "Título inválido",
+      });
+    }
+
+    const document = await prisma.document.update({
+      where: { id },
+      data: {
+        title: title.trim(),
+      },
+      include: {
+        blocks: true,
+      },
+    });
+
+    res.json({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      progress: document.progress ?? 0,
+      favorite: document.favorite,
+      blocks: document.blocks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao atualizar título",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para atualizar o progresso de leitura do documento
+app.patch("/documents/:id/progress", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { progress } = req.body;
+
+    const safeProgress = Math.max(0, Math.min(100, Number(progress)));
+
+    if (Number.isNaN(safeProgress)) {
+      return res.status(400).json({
+        error: "Progresso inválido",
+      });
+    }
+
+    const currentDocument = await prisma.document.findUnique({
+      where: { id },
+    });
+
+    if (!currentDocument) {
+      return res.status(404).json({
+        error: "Documento não encontrado",
+      });
+    }
+
+    const nextProgress = Math.max(currentDocument.progress, safeProgress);
+
+    const document = await prisma.document.update({
+      where: { id },
+      data: {
+        progress: nextProgress,
+      },
+      include: {
+        blocks: true,
+      },
+    });
+
+    res.json({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      progress: document.progress,
+      favorite: document.favorite,
+      blocks: document.blocks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao atualizar progresso",
+      details: error.message,
+    });
+  }
+});
+
+
+
+
+
+
+
+
 
 app.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`);

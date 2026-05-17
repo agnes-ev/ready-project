@@ -1,6 +1,6 @@
 import { BookOpen, FileText, Plus, X, Pencil, Trash2, Check, Star } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import UserProfilePopup from "@/components/UserProfilePopup";
 import { useBooks, type Book } from "@/context/BooksContext";
 
@@ -14,32 +14,104 @@ const Library = () => {
   const [editingTitle, setEditingTitle] = useState("");
   const [isUploadHovered, setIsUploadHovered] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoadingBooks, setIsLoadingBooks] = useState(true);
 
 
+// Função para iniciar a edição do título do livro
   const startEdit = (book: Book) => {
    setEditingId(book.id);
    setEditingTitle(book.title);
 };
 
-  const saveEdit = () => {
-    if (!editingId) return;
-    const trimmed = editingTitle.trim();
-    if (trimmed.length === 0) {
-     setEditingId(null);
-     return;
+// Função para salvar a edição do título do livro
+ const saveEdit = async () => {
+  if (!editingId) return;
+
+  const trimmed = editingTitle.trim();
+
+  if (trimmed.length === 0) {
+    setEditingId(null);
+    return;
   }
-  setBooks((prev) => prev.map((b) => (b.id === editingId ? { ...b, title: trimmed } : b)));
-  setEditingId(null);
+
+  try {
+    const response = await fetch(
+      `http://localhost:3001/documents/${editingId}/title`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: trimmed,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Erro ao atualizar título");
+    }
+
+    setBooks((prev) =>
+      prev.map((book) =>
+        book.id === editingId ? { ...book, title: trimmed } : book
+      )
+    );
+
+    setEditingId(null);
+  } catch (error) {
+    console.error(error);
+    alert("Erro ao salvar o novo título");
+  }
 };
 
-  const handleDelete = (id: string) => {
-  if (window.confirm("Tem certeza que deseja apagar este livro da biblioteca?")) {
-    setBooks((prev) => prev.filter((b) => b.id !== id));
-  }
-};
+// Função para lidar com a exclusão de um livro da biblioteca
+  const handleDelete = async (id: string) => {
+    const confirmed = window.confirm("Tem certeza que deseja apagar este livro da biblioteca?" );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`http://localhost:3001/documents/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Erro ao apagar livro");
+      }
+
+      setBooks((prev) => prev.filter((book) => book.id !== id));
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao apagar livro");
+    }
+  };
+
+useEffect(() => {
+  const loadDocuments = async () => {
+    try {
+      setIsLoadingBooks(true);
+      
+      const response = await fetch("http://localhost:3001/documents");
+
+      if (!response.ok) {
+        throw new Error("Erro ao buscar documentos");
+      }
+
+      const data = await response.json();
+
+      setBooks(data);
+    } catch (error) {
+      console.error("Erro ao carregar documentos:", error);
+    } finally {
+      setIsLoadingBooks(false);
+    }
+  };
+
+  loadDocuments();
+}, [setBooks]);
 
 // Função para lidar com o upload do arquivo PDF, enviar para o backend e atualizar a biblioteca com os dados retornados
-
  const handleFileUpload = async (file: File) => {
   try {
 
@@ -61,16 +133,16 @@ const Library = () => {
 
     console.log("Resposta do backend:", data);
 
-// Criar um novo livro com os dados retornados e adicionar à biblioteca
-    const newBook: Book = {
-      id: String(Date.now()),
-      title: file.name.replace(/\.pdf$/i, ""),
-      progress: 0,
-      file,
-      blocks: data.blocks,
+ // Adicionar à biblioteca o livro salvo no banco
+    const savedBook: Book = {
+      id: data.id,
+      title: data.title,
+      progress: data.progress ?? 0,
+      favorite: data.favorite ?? false,
+      blocks: data.blocks ?? [],
     };
 
-    setBooks((prev) => [newBook, ...prev]);
+    setBooks((prev) => [savedBook, ...prev]);
     setShowUpload(false);
   } catch (error) {
     console.error(error);
@@ -79,18 +151,63 @@ const Library = () => {
     setIsUploading(false);
   }
 };
-
 // Função para mover o livro selecionado para o topo da lista quando o usuário clicar em "Continuar leitura"
+  const moveBookToTop = async (id: string) => {
+  try {
+    await fetch(`http://localhost:3001/documents/${id}/open`, {
+      method: "PATCH",
+    });
 
-  const moveBookToTop = (id: string) => {
-  setBooks((prev) => {
-    const selectedBook = prev.find((book) => book.id === id);
-    const otherBooks = prev.filter((book) => book.id !== id);
+    setBooks((prev) => {
+      const selectedBook = prev.find((book) => book.id === id);
+      const otherBooks = prev.filter((book) => book.id !== id);
 
-    return selectedBook ? [selectedBook, ...otherBooks] : prev;
-  });
-
+      return selectedBook ? [selectedBook, ...otherBooks] : prev;
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar último acesso:", error);
+  }
 };
+
+// Função para alternar o status de favorito do livro
+const toggleFavorite = async (id: string, currentFavorite: boolean) => {
+  const nextFavorite = !currentFavorite;
+
+  try {
+    const response = await fetch(`http://localhost:3001/documents/${id}/favorite`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        favorite: nextFavorite,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Erro ao atualizar favorito");
+    }
+
+    setBooks((prev) =>
+      prev.map((item) =>
+        item.id === id ? { ...item, favorite: nextFavorite } : item
+      )
+    );
+  } catch (error) {
+    console.error(error);
+    alert("Erro ao atualizar favorito");
+  }
+};
+
+
+
+
+
+
+
+
+
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -188,7 +305,14 @@ const Library = () => {
           </div>
         )}
 
-        {libraryBooks.length === 0 ? (
+       {isLoadingBooks ? (
+          <div className="text-center py-20">
+            <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+            <p className="text-muted-foreground mt-4">
+              Carregando biblioteca...
+            </p>
+          </div>
+        ) : libraryBooks.length === 0 ? (
           <div className="text-center py-24 space-y-4">
             <BookOpen size={48} className="mx-auto text-muted-foreground/40" />
             <p className="text-lg text-muted-foreground">
@@ -208,18 +332,12 @@ const Library = () => {
             {libraryBooks.map((book) => (
               <div key={book.id} className="flex items-center gap-3">
                 <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
+                 onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
 
-                    setBooks((prev) =>
-                      prev.map((item) =>
-                        item.id === book.id
-                          ? { ...item, favorite: !item.favorite }
-                          : item
-                      )
-                    );
-                  }}
+                  toggleFavorite(book.id, Boolean(book.favorite));
+}}
                   aria-label={book.favorite ? "Remover dos favoritos" : "Adicionar aos favoritos"}
                   className="shrink-0 p-2 rounded-full text-muted-foreground hover:text-yellow-400 hover:bg-yellow-400/10 transition-smooth"
                 >
@@ -262,11 +380,11 @@ const Library = () => {
                       <div className="w-32 h-1.5 bg-secondary rounded-full overflow-hidden">
                         <div
                           className="h-full bg-primary rounded-full transition-smooth"
-                          style={{ width: `${book.progress}%` }}
+                          style={{ width: `${book.progress ?? 0}%` }}
                         />
                       </div>
                       <span className="text-xs text-muted-foreground tabular-nums">
-                        {book.progress}%
+                        {book.progress ?? 0}%
                       </span>
                     </div>
                   </div>

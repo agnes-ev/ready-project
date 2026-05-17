@@ -63,6 +63,17 @@ def fix_hyphenated_words(text: str) -> str:
 
 #Function to clean the extracted text by fixing duplicated letters, hyphenated words, and normalizing whitespace
 def clean_extracted_text(text: str) -> str:
+    ligature_replacements = {
+        "ﬁ": "fi",
+        "ﬂ": "fl",
+        "ﬀ": "ff",
+        "ﬃ": "ffi",
+        "ﬄ": "ffl",
+    }
+
+    for ligature, replacement in ligature_replacements.items():
+        text = text.replace(ligature, replacement)
+
     text = fix_duplicated_letters(text)
     text = fix_hyphenated_words(text)
     text = re.sub(r"\s+", " ", text).strip()
@@ -152,7 +163,6 @@ def is_garbage_block(text: str, category: str) -> bool:
         return True
 
     # Detecta textos quebrados em letras soltas:
-    # Ex: "O T - s a m a P -"
     single_char_tokens = [token for token in tokens if len(token) == 1]
     single_char_ratio = len(single_char_tokens) / len(tokens)
 

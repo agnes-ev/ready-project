@@ -227,38 +227,97 @@ useEffect(() => {
     Math.round(((currentPage + 1) / totalPages) * 100)
   );
 
-  setBooks((prev) =>
-    prev.map((item) =>
-       item.id === book.id && nextProgress > item.progress
-        ? { ...item, progress: nextProgress }
-        : item
-    )
-  );
-}, [book?.id, currentPage, totalPages, settings.readingMode, setBooks]);
+  if (nextProgress <= book.progress) return;
+
+  const updateProgress = async () => {
+    try {
+      const response = await fetch(
+        `http://localhost:3001/documents/${book.id}/progress`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            progress: nextProgress,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Erro ao atualizar progresso");
+      }
+
+      setBooks((prev) =>
+        prev.map((item) =>
+          item.id === book.id && nextProgress > item.progress
+            ? { ...item, progress: nextProgress }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Erro ao salvar progresso:", error);
+    }
+  };
+
+  updateProgress();
+}, [
+  book,
+  currentPage,
+  totalPages,
+  settings.readingMode,
+  setBooks,
+]);
 
 // Effect para atualizar o progresso de leitura do livro com base na posição de rolagem modo rolagem
 useEffect(() => {
   if (!book) return;
   if (settings.readingMode !== "scroll") return;
 
-  const handleScroll = () => {
+  const handleScroll = async () => {
     const scrollTop = window.scrollY;
-    const documentHeight =
-      document.documentElement.scrollHeight - window.innerHeight;
+    const scrollHeight = document.documentElement.scrollHeight;
+    const clientHeight = window.innerHeight;
 
-    if (documentHeight <= 0) return;
+    const scrollableHeight = scrollHeight - clientHeight;
 
-    const scrollProgress = Math.round((scrollTop / documentHeight) * 100);
+    if (scrollableHeight <= 0) return;
 
-    const nextProgress = Math.min(100, Math.max(0, scrollProgress));
-
-    setBooks((prev) =>
-      prev.map((item) =>
-        item.id === book.id && nextProgress > item.progress
-          ? { ...item, progress: nextProgress }
-          : item
-      )
+    const nextProgress = Math.min(
+      100,
+      Math.round((scrollTop / scrollableHeight) * 100)
     );
+
+    if (nextProgress <= book.progress) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:3001/documents/${book.id}/progress`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            progress: nextProgress,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Erro ao atualizar progresso");
+      }
+
+      setBooks((prev) =>
+        prev.map((item) =>
+          item.id === book.id && nextProgress > item.progress
+            ? { ...item, progress: nextProgress }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Erro ao salvar progresso por rolagem:", error);
+    }
   };
 
   window.addEventListener("scroll", handleScroll);
@@ -267,10 +326,12 @@ useEffect(() => {
   return () => {
     window.removeEventListener("scroll", handleScroll);
   };
-}, [book?.id, settings.readingMode, setBooks]);
+}, [book, settings.readingMode, setBooks]);
 
   return (
     <div className={`min-h-screen transition-smooth ${themeClasses[settings.contrast]}`}>
+
+
 
       {/* Header */}
       {!settings.focusMode && (
@@ -441,6 +502,10 @@ useEffect(() => {
                   {[
                     { val: "Arial", label: "Arial" },
                     { val: "OpenDyslexic", label: "OpenDyslexic" },
+                    { val: "Lexend", label: "Lexend" },
+                    { val: "Atkinson Hyperlegible", label: "Atkinson Hyperlegible" },
+                    { val: "Verdana", label: "Verdana" },
+
                   ].map(({ val, label }) => (
                     <button
                       key={val}
