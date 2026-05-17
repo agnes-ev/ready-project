@@ -51,7 +51,12 @@ const Reader = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const readerContentRef = useRef<HTMLDivElement | null>(null);
+  const hasRestoredPosition = useRef(false);
+  const hasRestoredScrollPosition = useRef(false);
+  const scrollSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isRestoringPosition, setIsRestoringPosition] = useState(false);
 
   const [settings, setSettings] = useState({
     fontSize: 18,
@@ -209,17 +214,115 @@ const visibleBlocks =
 
 const totalPages = readerTotalPages;
 
-// Effect para extrair texto do PDF quando o componente é montado ou quando o livro muda
+// Effect para carregar configurações do leitor ao montar o componente
+useEffect(() => {
+  const loadReaderSettings = async () => {
+    try {
+      setIsLoadingSettings(true);
+
+      const response = await fetch("http://localhost:3001/reader-settings");
+
+      if (!response.ok) {
+        throw new Error("Erro ao buscar configurações do leitor");
+      }
+
+      const data = await response.json();
+
+      setSettings((prev) => ({
+        ...prev,
+        fontSize: data.fontSize ?? prev.fontSize,
+        lineHeight: data.lineHeight ?? prev.lineHeight,
+        letterSpacing: data.letterSpacing ?? prev.letterSpacing,
+        contrast: data.contrast ?? prev.contrast,
+        readingMode: data.readingMode ?? prev.readingMode,
+        focusMode: data.focusMode ?? prev.focusMode,
+        fontFamily: data.fontFamily ?? prev.fontFamily,
+        bold: data.bold ?? prev.bold,
+        italic: data.italic ?? prev.italic,
+      }));
+    } catch (error) {
+      console.error("Erro ao carregar configurações do leitor:", error);
+    } finally {
+      setIsLoadingSettings(false);
+    }
+  };
+
+  loadReaderSettings();
+}, []);
+
+// Effect para salvar configurações do leitor sempre que elas mudarem
+useEffect(() => {
+  if (isLoadingSettings) return;
+
+  const saveReaderSettings = async () => {
+    try {
+      await fetch("http://localhost:3001/reader-settings", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(settings),
+      });
+    } catch (error) {
+      console.error("Erro ao salvar configurações do leitor:", error);
+    }
+  };
+
+  saveReaderSettings();
+}, [settings, isLoadingSettings]);
+
+
+// Effect para restaurar a última posição no modo página
 useEffect(() => {
   if (!book) return;
 
-  setCurrentPage(0);
+  hasRestoredPosition.current = false;
+
+  setCurrentPage(book.currentPage ?? 0);
+
+  setTimeout(() => {
+    hasRestoredPosition.current = true;
+  }, 300);
 }, [book?.id]);
 
-// Effect para atualizar o progresso de leitura do livro com base na página atual modo página
+// Effect para salvar página atual no modo página, somente após a posição ter sido restaurada para evitar sobrescrever a posição restaurada
 useEffect(() => {
   if (!book) return;
   if (settings.readingMode !== "page") return;
+  if (!hasRestoredPosition.current) return;
+
+  const saveCurrentPage = async () => {
+    try {
+      await fetch(`http://localhost:3001/documents/${book.id}/position`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          currentPage,
+        }),
+      });
+
+      setBooks((prev) =>
+        prev.map((item) =>
+          item.id === book.id
+            ? { ...item, currentPage }
+            : item
+        )
+      );
+    } catch (error) {
+      console.error("Erro ao salvar página atual:", error);
+    }
+  };
+
+  saveCurrentPage();
+}, [book?.id, currentPage, settings.readingMode, setBooks]);
+
+// Effect para atualizar o progresso de leitura no modo página
+useEffect(() => {
+  if (!book) return;
+  if (settings.readingMode !== "page") return;
+  if (!hasRestoredPosition.current) return;
   if (!totalPages || totalPages <= 0) return;
 
   const nextProgress = Math.min(
@@ -227,7 +330,7 @@ useEffect(() => {
     Math.round(((currentPage + 1) / totalPages) * 100)
   );
 
-  if (nextProgress <= book.progress) return;
+  if (nextProgress <= (book.progress ?? 0)) return;
 
   const updateProgress = async () => {
     try {
@@ -250,7 +353,7 @@ useEffect(() => {
 
       setBooks((prev) =>
         prev.map((item) =>
-          item.id === book.id && nextProgress > item.progress
+          item.id === book.id && nextProgress > (item.progress ?? 0)
             ? { ...item, progress: nextProgress }
             : item
         )
@@ -262,76 +365,232 @@ useEffect(() => {
 
   updateProgress();
 }, [
-  book,
+  book?.id,
+  book?.progress,
   currentPage,
   totalPages,
   settings.readingMode,
   setBooks,
 ]);
 
-// Effect para atualizar o progresso de leitura do livro com base na posição de rolagem modo rolagem
+// Effect para restaurar a última posição no modo rolagem
 useEffect(() => {
   if (!book) return;
   if (settings.readingMode !== "scroll") return;
 
-  const handleScroll = async () => {
+  hasRestoredScrollPosition.current = false;
+  setIsRestoringPosition(true);
+
+  const savedScrollPercent = book.scrollPercent ?? 0;
+
+  const timeoutId = setTimeout(() => {
+    const scrollHeight = document.documentElement.scrollHeight;
+    const clientHeight = window.innerHeight;
+    const scrollableHeight = scrollHeight - clientHeight;
+
+    if (scrollableHeight > 0 && savedScrollPercent > 0) {
+      window.scrollTo({
+        top: (scrollableHeight * savedScrollPercent) / 100,
+        behavior: "auto",
+      });
+    }
+
+    setTimeout(() => {
+      hasRestoredScrollPosition.current = true;
+      setIsRestoringPosition(false);
+    }, 300);
+  }, 500);
+
+  return () => clearTimeout(timeoutId);
+}, [book?.id, settings.readingMode]);
+
+// Effect para salvar progresso e posição no modo rolagem
+useEffect(() => {
+  if (!book) return;
+  if (settings.readingMode !== "scroll") return;
+
+  const calculateScrollPercent = () => {
     const scrollTop = window.scrollY;
     const scrollHeight = document.documentElement.scrollHeight;
     const clientHeight = window.innerHeight;
-
     const scrollableHeight = scrollHeight - clientHeight;
 
-    if (scrollableHeight <= 0) return;
+    if (scrollableHeight <= 0) return 0;
 
-    const nextProgress = Math.min(
+    return Math.min(
       100,
       Math.round((scrollTop / scrollableHeight) * 100)
     );
+  };
 
-    if (nextProgress <= book.progress) return;
+  const saveScrollPosition = async () => {
+    if (!hasRestoredScrollPosition.current) return;
+
+    const nextScrollPercent = calculateScrollPercent();
 
     try {
-      const response = await fetch(
-        `http://localhost:3001/documents/${book.id}/progress`,
-        {
+      await fetch(`http://localhost:3001/documents/${book.id}/position`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          scrollPercent: nextScrollPercent,
+        }),
+      });
+
+      if (nextScrollPercent > (book.progress ?? 0)) {
+        await fetch(`http://localhost:3001/documents/${book.id}/progress`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            progress: nextProgress,
+            progress: nextScrollPercent,
           }),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error("Erro ao atualizar progresso");
+        });
       }
 
       setBooks((prev) =>
         prev.map((item) =>
-          item.id === book.id && nextProgress > item.progress
-            ? { ...item, progress: nextProgress }
+          item.id === book.id
+            ? {
+                ...item,
+                scrollPercent: nextScrollPercent,
+                progress:
+                  nextScrollPercent > (item.progress ?? 0)
+                    ? nextScrollPercent
+                    : item.progress,
+              }
             : item
         )
       );
     } catch (error) {
-      console.error("Erro ao salvar progresso por rolagem:", error);
+      console.error("Erro ao salvar posição da rolagem:", error);
     }
   };
 
+  const handleScroll = () => {
+    if (!hasRestoredScrollPosition.current) return;
+
+    if (scrollSaveTimeoutRef.current) {
+      clearTimeout(scrollSaveTimeoutRef.current);
+    }
+
+    scrollSaveTimeoutRef.current = setTimeout(() => {
+      saveScrollPosition();
+    }, 700);
+  };
+
   window.addEventListener("scroll", handleScroll);
-  handleScroll();
 
   return () => {
+    if (scrollSaveTimeoutRef.current) {
+      clearTimeout(scrollSaveTimeoutRef.current);
+    }
+
     window.removeEventListener("scroll", handleScroll);
   };
-}, [book, settings.readingMode, setBooks]);
+}, [
+  book?.id,
+  book?.progress,
+  settings.readingMode,
+  setBooks,
+]);
+
+// Função para calcular a porcentagem de rolagem atual, usada na transição entre modos para determinar a página correta ou posição de rolagem
+const calculateCurrentScrollPercent = () => {
+  const scrollTop = window.scrollY;
+  const scrollHeight = document.documentElement.scrollHeight;
+  const clientHeight = window.innerHeight;
+  const scrollableHeight = scrollHeight - clientHeight;
+
+  if (scrollableHeight <= 0) return 0;
+
+  return Math.min(
+    100,
+    Math.round((scrollTop / scrollableHeight) * 100)
+  );
+};
+
+const changeReadingMode = (nextMode: "page" | "scroll") => {
+  if (!book) return;
+  if (nextMode === settings.readingMode) return;
+
+  const realTotalPages = pdfPageNumbers.length || 1;
+
+  if (nextMode === "page") {
+    const currentScrollPercent = calculateCurrentScrollPercent();
+
+    const nextPage = Math.min(
+      realTotalPages - 1,
+      Math.max(
+        0,
+        Math.round((currentScrollPercent / 100) * (realTotalPages - 1))
+      )
+    );
+
+    setCurrentPage(nextPage);
+
+    setBooks((prev) =>
+      prev.map((item) =>
+        item.id === book.id
+          ? {
+              ...item,
+              currentPage: nextPage,
+              scrollPercent: currentScrollPercent,
+            }
+          : item
+      )
+    );
+  }
+
+  if (nextMode === "scroll") {
+    const currentPagePercent =
+      realTotalPages > 1
+        ? Math.round((currentPage / (realTotalPages - 1)) * 100)
+        : 0;
+
+    setBooks((prev) =>
+      prev.map((item) =>
+        item.id === book.id
+          ? {
+              ...item,
+              currentPage,
+              scrollPercent: currentPagePercent,
+            }
+          : item
+      )
+    );
+  }
+
+  setSettings({
+    ...settings,
+    readingMode: nextMode,
+  });
+};
+
+
+
+
+
+
+
+
+
 
   return (
     <div className={`min-h-screen transition-smooth ${themeClasses[settings.contrast]}`}>
-
-
+      {isRestoringPosition && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+            <p className="text-muted-foreground mt-4">
+              Restaurando leitura...
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       {!settings.focusMode && (
@@ -633,11 +892,8 @@ useEffect(() => {
 
                 <div className="grid grid-cols-2 gap-2">
 
-                  <button
-                    onClick={() => {
-                      setSettings({ ...settings, readingMode: "page" });
-                      setCurrentPage(0);
-                    }}
+                 <button
+                    onClick={() => changeReadingMode("page")} 
                     className={`px-3 py-2 rounded-md border text-sm transition-smooth ${
                       settings.readingMode === "page"
                         ? `border-current ${accent} font-semibold`
@@ -648,10 +904,7 @@ useEffect(() => {
                   </button>
 
                   <button
-                    onClick={() => {
-                      setSettings({ ...settings, readingMode: "scroll" });
-                      setCurrentPage(0);
-                    }}
+                    onClick={() => changeReadingMode("scroll")}
                     className={`px-3 py-2 rounded-md border text-sm transition-smooth ${
                       settings.readingMode === "scroll"
                         ? `border-current ${accent} font-semibold`

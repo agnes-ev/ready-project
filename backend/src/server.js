@@ -73,6 +73,8 @@ app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
       filename: pythonResponse.data.filename,
       progress: savedDocument.progress,
       favorite: savedDocument.favorite,
+      currentPage: savedDocument.currentPage,
+      scrollPercent: savedDocument.scrollPercent,
       blocks: savedDocument.blocks,
     });
   } catch (error) {
@@ -113,6 +115,8 @@ app.get("/documents", async (req, res) => {
         fileName: document.fileName,
         progress: document.progress,
         favorite: document.favorite,
+        currentPage: document.currentPage,
+        scrollPercent: document.scrollPercent,
         blocks: document.blocks,
       }))
     );
@@ -170,6 +174,8 @@ app.patch("/documents/:id/open", async (req, res) => {
       progress: document.progress,
       favorite: document.favorite,
       blocks: document.blocks,
+      currentPage: document.currentPage,
+      scrollPercent: document.scrollPercent,
     });
   } catch (error) {
     console.error(error);
@@ -204,6 +210,8 @@ app.patch("/documents/:id/favorite", async (req, res) => {
       progress: document.progress ?? 0,
       favorite: document.favorite,
       blocks: document.blocks,
+      currentPage: document.currentPage,
+      scrollPercent: document.scrollPercent,
     });
   } catch (error) {
     console.error(error);
@@ -244,6 +252,8 @@ app.patch("/documents/:id/title", async (req, res) => {
       progress: document.progress ?? 0,
       favorite: document.favorite,
       blocks: document.blocks,
+      currentPage: document.currentPage,
+      scrollPercent: document.scrollPercent,
     });
   } catch (error) {
     console.error(error);
@@ -298,6 +308,8 @@ app.patch("/documents/:id/progress", async (req, res) => {
       progress: document.progress,
       favorite: document.favorite,
       blocks: document.blocks,
+      currentPage: document.currentPage,
+      scrollPercent: document.scrollPercent,
     });
   } catch (error) {
     console.error(error);
@@ -309,9 +321,131 @@ app.patch("/documents/:id/progress", async (req, res) => {
   }
 });
 
+// Endpoint para buscar ou criar configurações do leitor
+app.get("/reader-settings", async (req, res) => {
+  try {
+    const settings = await prisma.readerSettings.upsert({
+      where: {
+        userKey: "default-user",
+      },
+      update: {},
+      create: {
+        userKey: "default-user",
+      },
+    });
 
+    res.json(settings);
+  } catch (error) {
+    console.error(error);
 
+    res.status(500).json({
+      error: "Erro ao buscar configurações do leitor",
+      details: error.message,
+    });
+  }
+});
 
+// Endpoint para atualizar configurações do leitor
+app.patch("/reader-settings", async (req, res) => {
+  try {
+    const {
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      contrast,
+      readingMode,
+      focusMode,
+      fontFamily,
+      bold,
+      italic,
+    } = req.body;
+
+    const settings = await prisma.readerSettings.upsert({
+      where: {
+        userKey: "default-user",
+      },
+      update: {
+        fontSize,
+        lineHeight,
+        letterSpacing,
+        contrast,
+        readingMode,
+        focusMode,
+        fontFamily,
+        bold,
+        italic,
+      },
+      create: {
+        userKey: "default-user",
+        fontSize,
+        lineHeight,
+        letterSpacing,
+        contrast,
+        readingMode,
+        focusMode,
+        fontFamily,
+        bold,
+        italic,
+      },
+    });
+
+    res.json(settings);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao salvar configurações do leitor",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para atualizar a posição de leitura do documento
+app.patch("/documents/:id/position", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { currentPage, scrollPercent } = req.body;
+
+    const dataToUpdate = {};
+
+    if (typeof currentPage === "number") {
+      dataToUpdate.currentPage = Math.max(0, currentPage);
+    }
+
+    if (typeof scrollPercent === "number") {
+      dataToUpdate.scrollPercent = Math.max(
+        0,
+        Math.min(100, scrollPercent)
+      );
+    }
+
+    const document = await prisma.document.update({
+      where: { id },
+      data: dataToUpdate,
+      include: {
+        blocks: true,
+      },
+    });
+
+    res.json({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      progress: document.progress,
+      favorite: document.favorite,
+      currentPage: document.currentPage,
+      scrollPercent: document.scrollPercent,
+      blocks: document.blocks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao salvar posição de leitura",
+      details: error.message,
+    });
+  }
+});
 
 
 

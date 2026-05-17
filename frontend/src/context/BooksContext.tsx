@@ -16,6 +16,8 @@ export interface Book {
   temporary?: boolean;
   favorite?: boolean;
   blocks?: BookBlock[];
+  currentPage?: number;
+  scrollPercent?: number;
 }
 
 interface BooksContextType {

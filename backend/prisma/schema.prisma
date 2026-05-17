@@ -8,14 +8,16 @@ datasource db {
 }
 
 model Document {
-  id        String   @id @default(uuid())
-  title     String
-  fileName  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  lastOpenedAt DateTime?
-  favorite Boolean @default(false)
-  progress Int @default(0)
+  id            String   @id @default(uuid())
+  title         String
+  fileName      String
+  favorite      Boolean   @default(false)
+  progress      Int       @default(0)
+  currentPage   Int       @default(0)
+  scrollPercent Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastOpenedAt  DateTime?
 
   blocks    DocumentBlock[]
 }
@@ -30,4 +32,21 @@ model DocumentBlock {
   sourceType   String?
 
   document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+ model ReaderSettings {
+    id            String  @id @default(uuid())
+    userKey       String  @unique
+    fontSize      Int     @default(18)
+    lineHeight    Float   @default(1.6)
+    letterSpacing Float   @default(0)
+    contrast      String  @default("default")
+    readingMode   String  @default("page")
+    focusMode     Boolean @default(false)
+    fontFamily    String  @default("Arial")
+    bold          Boolean @default(false)
+    italic        Boolean @default(false)
+
+    createdAt     DateTime @default(now())
+    updatedAt     DateTime @updatedAt
 }
