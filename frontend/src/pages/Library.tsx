@@ -18,9 +18,9 @@ const Library = () => {
 
 
 // Função para iniciar a edição do título do livro
-  const startEdit = (book: Book) => {
-   setEditingId(book.id);
-   setEditingTitle(book.title);
+const startEdit = (book: Book) => {
+  setEditingId(book.id);
+  setEditingTitle(book.title);
 };
 
 // Função para salvar a edição do título do livro
@@ -131,12 +131,10 @@ useEffect(() => {
 
     const data = await response.json();
 
-    console.log("Resposta do backend:", data);
-
  // Adicionar à biblioteca o livro salvo no banco
     const savedBook: Book = {
       id: data.id,
-      title: data.title,
+      title:  file.name.replace(/\.pdf$/i, ""),
       progress: data.progress ?? 0,
       favorite: data.favorite ?? false,
       blocks: data.blocks ?? [],
@@ -151,6 +149,7 @@ useEffect(() => {
     setIsUploading(false);
   }
 };
+
 // Função para mover o livro selecionado para o topo da lista quando o usuário clicar em "Continuar leitura"
   const moveBookToTop = async (id: string) => {
   try {
@@ -198,15 +197,6 @@ const toggleFavorite = async (id: string, currentFavorite: boolean) => {
     alert("Erro ao atualizar favorito");
   }
 };
-
-
-
-
-
-
-
-
-
 
 
   return (
@@ -412,7 +402,7 @@ const toggleFavorite = async (id: string, currentFavorite: boolean) => {
                   <button
                     onClick={() => handleDelete(book.id)}
                     aria-label="Apagar livro"
-                    className="p-2 ml-1000 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth"
+                    className="p-2 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth"
                   >
                     <Trash2 size={18} />
                   </button>

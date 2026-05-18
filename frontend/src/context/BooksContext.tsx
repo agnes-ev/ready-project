@@ -1,11 +1,14 @@
 import { createContext, useContext, useState, ReactNode } from "react";
 
 export interface BookBlock {
+  id?: string;
+  documentId?: string;
   order: number;
   type: string;
   originalText: string;
+  simplifiedText?: string | null;
   page: number | null;
-  sourceType: string;
+  sourceType: string | null;
 }
 
 export interface Book {
@@ -18,6 +21,7 @@ export interface Book {
   blocks?: BookBlock[];
   currentPage?: number;
   scrollPercent?: number;
+  
 }
 
 interface BooksContextType {

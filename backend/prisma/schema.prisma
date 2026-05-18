@@ -23,13 +23,14 @@ model Document {
 }
 
 model DocumentBlock {
-  id           String @id @default(uuid())
-  documentId   String
-  order        Int
-  type         String
-  originalText String
-  page         Int?
-  sourceType   String?
+  id             String @id @default(uuid())
+  documentId     String
+  order          Int
+  type           String
+  originalText   String
+  simplifiedText String?
+  page           Int?
+  sourceType     String?
 
   document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }

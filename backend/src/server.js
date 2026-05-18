@@ -31,8 +31,10 @@ app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
 
     filePath = req.file.path;
 
-    const form = new FormData();
-    form.append("file", fs.createReadStream(filePath), req.file.originalname);
+      const originalName = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+
+      const form = new FormData();
+      form.append("file", fs.createReadStream(filePath), originalName);
 
     const pythonResponse = await axios.post(
       "http://127.0.0.1:8000/process-pdf",
@@ -46,20 +48,25 @@ app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
 
     const savedDocument = await prisma.document.create({
       data: {
-        title: req.file.originalname.replace(/\.pdf$/i, ""),
-        fileName: req.file.originalname,
+        title: originalName.replace(/\.pdf$/i, ""),
+        fileName: originalName,
         blocks: {
           create: blocks.map((block, index) => ({
             order: block.order ?? index,
             type: block.type ?? "paragraph",
             originalText: block.originalText ?? "",
+            simplifiedText: null,
             page: block.page ?? null,
             sourceType: block.sourceType ?? null,
           })),
         },
       },
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -104,7 +111,11 @@ app.get("/documents", async (req, res) => {
         },
       ],
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -163,7 +174,11 @@ app.patch("/documents/:id/open", async (req, res) => {
         lastOpenedAt: new Date(),
       },
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -199,7 +214,11 @@ app.patch("/documents/:id/favorite", async (req, res) => {
         favorite: Boolean(favorite),
       },
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -241,7 +260,11 @@ app.patch("/documents/:id/title", async (req, res) => {
         title: title.trim(),
       },
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -297,7 +320,11 @@ app.patch("/documents/:id/progress", async (req, res) => {
         progress: nextProgress,
       },
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -423,7 +450,11 @@ app.patch("/documents/:id/position", async (req, res) => {
       where: { id },
       data: dataToUpdate,
       include: {
-        blocks: true,
+        blocks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
       },
     });
 
@@ -447,7 +478,64 @@ app.patch("/documents/:id/position", async (req, res) => {
   }
 });
 
+// Endpoint temporário para testar simplificação de texto
+app.post("/documents/:id/simplify", async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    const document = await prisma.document.findUnique({
+      where: { id },
+      include: {
+        blocks: true,
+      },
+    });
+
+    if (!document) {
+      return res.status(404).json({
+        error: "Documento não encontrado",
+      });
+    }
+
+    const updatedBlocks = await Promise.all(
+      document.blocks.map((block) => {
+        if (!block.originalText || block.originalText.trim().length === 0) {
+          return block;
+        }
+
+        if (block.simplifiedText) {
+          return block;
+        }
+
+        return prisma.documentBlock.update({
+          where: {
+            id: block.id,
+          },
+          data: {
+            simplifiedText: `[Simplificado] ${block.originalText}`,
+          },
+        });
+      })
+    );
+
+    res.json({
+      id: document.id,
+      title: document.title,
+      fileName: document.fileName,
+      progress: document.progress,
+      favorite: document.favorite,
+      currentPage: document.currentPage,
+      scrollPercent: document.scrollPercent,
+      blocks: updatedBlocks,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao simplificar documento",
+      details: error.message,
+    });
+  }
+});
 
 
 

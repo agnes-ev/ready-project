@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, Sparkles, Volume2 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
-import { pdfjs } from "react-pdf";
-import pdfWorker from "pdfjs-dist/build/pdf.worker?url";
 import { useBooks, Book } from "@/context/BooksContext";
 
 
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
-
-// Define contrast types for theming
+// Tipos de contraste disponíveis no leitor
 
 type Contrast = "default" | "high" | "sepia" | "dark";
 
+type ReaderBlock = Book["blocks"][number] & {
+  type: Book["blocks"][number]["type"] | "paragraph_fragment";
+};
 
 const themeClasses: Record<Contrast, string> = {
   default: "bg-background text-foreground",
@@ -41,7 +40,7 @@ const accentBtnClasses: Record<Contrast, string> = {
   dark: "bg-[hsl(205,50%,45%)] text-white",
 };
 
-// Main Reader component
+// Componente principal do leitor
 
 const Reader = () => {
   const { id } = useParams();
@@ -49,14 +48,14 @@ const Reader = () => {
   const book = books.find((b) => b.id === id);
 
   const [currentPage, setCurrentPage] = useState(0);
-  const [isLoadingPdf, setIsLoadingPdf] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
-  const readerContentRef = useRef<HTMLDivElement | null>(null);
   const hasRestoredPosition = useRef(false);
   const hasRestoredScrollPosition = useRef(false);
   const scrollSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isRestoringPosition, setIsRestoringPosition] = useState(false);
+  const [isSimplifiedMode, setIsSimplifiedMode] = useState(false);
+  const [isSimplifying, setIsSimplifying] = useState(false);
 
   const [settings, setSettings] = useState({
     fontSize: 18,
@@ -72,7 +71,7 @@ const Reader = () => {
 
   const accent = accentBtnClasses[settings.contrast];
 
-// Function to render text with inline references 
+// Renderiza referências numéricas pequenas como sobrescrito
   const renderTextWithReferences = (text: string) => {
   const parts = text.split(/([,.;:!?])(\d{1,2})(?=\s|$)/g);
 
@@ -94,7 +93,7 @@ const Reader = () => {
   });
 };
 
-// Function to determine block styles based on settings and type
+// Define o estilo visual dos blocos conforme as configurações do leitor
 const getBlockStyle = (scale = 1) => ({
   fontSize: `${settings.fontSize * scale}px`,
   lineHeight: settings.lineHeight,
@@ -104,12 +103,13 @@ const getBlockStyle = (scale = 1) => ({
   fontStyle: settings.italic ? "italic" : "normal",
 });
 
-// Heuristic function to determine if a block should be rendered as a heading
+// Heurística para decidir se um bloco deve aparecer como título
 const shouldRenderBlockAsHeading = (
-  block: Book["blocks"][number],
+  block: ReaderBlock,
   index: number,
-  blocks: Book["blocks"]
+  blocks: ReaderBlock[]
 ) => {
+
   if (block.type !== "title") return false;
 
   const text = block.originalText.trim();
@@ -141,23 +141,19 @@ const shouldRenderBlockAsHeading = (
   return wordCount <= 6 && !endsLikeSentence;
 };
 
-// Function to process blocks and determine which should be displayed, merging false titles into paragraphs
-const getDisplayBlocks = () => {
+// Processa os blocos e junta falsos títulos ao parágrafo anterior
+const getDisplayBlocks = (): ReaderBlock[] => {
   if (!book?.blocks) return [];
 
-  const displayBlocks: {
-    type: string;
-    originalText: string;
-    page: number | null;
-    sourceType: string;
-    order: number;
-  }[] = [];
+  const displayBlocks: ReaderBlock[] = [];
 
-  book.blocks.forEach((block, index) => {
+  const readerBlocks = book.blocks as ReaderBlock[];
+
+  readerBlocks.forEach((block, index) => {
     const shouldBeHeading = shouldRenderBlockAsHeading(
       block,
       index,
-      book.blocks!
+      readerBlocks
     );
 
     const isFalseTitle = block.type === "title" && !shouldBeHeading;
@@ -166,7 +162,10 @@ const getDisplayBlocks = () => {
       const lastBlock = displayBlocks[displayBlocks.length - 1];
 
       if (lastBlock && lastBlock.type === "paragraph_fragment") {
-        lastBlock.originalText += " " + block.originalText;
+        displayBlocks[displayBlocks.length - 1] = {
+          ...lastBlock,
+          originalText: `${lastBlock.originalText} ${block.originalText}`,
+        };
       } else {
         displayBlocks.push({
           ...block,
@@ -184,13 +183,6 @@ const getDisplayBlocks = () => {
 };
 
 const displayBlocks = getDisplayBlocks();
-
-
-
-
-
-
-
 
 const pdfPageNumbers = Array.from(
   new Set(
@@ -254,7 +246,7 @@ useEffect(() => {
 useEffect(() => {
   if (isLoadingSettings) return;
 
-  const saveReaderSettings = async () => {
+  const timeoutId = setTimeout(async () => {
     try {
       await fetch("http://localhost:3001/reader-settings", {
         method: "PATCH",
@@ -266,9 +258,9 @@ useEffect(() => {
     } catch (error) {
       console.error("Erro ao salvar configurações do leitor:", error);
     }
-  };
+  }, 500);
 
-  saveReaderSettings();
+  return () => clearTimeout(timeoutId);
 }, [settings, isLoadingSettings]);
 
 
@@ -513,6 +505,7 @@ const calculateCurrentScrollPercent = () => {
   );
 };
 
+// Função para alternar entre modos de leitura, garantindo que a posição seja mantida de forma coerente durante a transição
 const changeReadingMode = (nextMode: "page" | "scroll") => {
   if (!book) return;
   if (nextMode === settings.readingMode) return;
@@ -570,7 +563,51 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
   });
 };
 
+// Função para alternar modo de simplificação, que pode solicitar ao backend a simplificação do texto caso ainda não tenha sido feita, e mantém o estado de simplificação para mostrar o texto simplificado quando disponível
+const handleToggleSimplification = async () => {
+  if (!book) return;
 
+  if (isSimplifiedMode) {
+    setIsSimplifiedMode(false);
+    return;
+  }
+
+  const alreadyHasSimplifiedText = book.blocks?.some(
+    (block) => block.simplifiedText
+  );
+
+  if (alreadyHasSimplifiedText) {
+    setIsSimplifiedMode(true);
+    return;
+  }
+
+  try {
+    setIsSimplifying(true);
+
+    const response = await fetch(
+      `http://localhost:3001/documents/${book.id}/simplify`,
+      {
+        method: "POST",
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("Erro ao simplificar texto");
+    }
+
+    const updatedBook = await response.json();
+
+    setBooks((prev) =>
+      prev.map((item) => (item.id === book.id ? updatedBook : item))
+    );
+
+    setIsSimplifiedMode(true);
+  } catch (error) {
+    console.error("Erro ao simplificar texto:", error);
+  } finally {
+    setIsSimplifying(false);
+  }
+};
 
 
 
@@ -609,18 +646,31 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
 
           </div>
           <div className="flex items-center gap-2">
-            <button className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}>
-              <Sparkles size={16} /> Simplificar
+
+            <button
+              onClick={handleToggleSimplification}
+              disabled={isSimplifying}
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth disabled:opacity-60 disabled:cursor-not-allowed`}
+            >
+              <Sparkles size={16} />
+              {isSimplifying
+                ? "Simplificando..."
+                : isSimplifiedMode
+                  ? "Voltar para original"
+                  : "Simplificar"}
             </button>
+
             <button className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}>
               <Volume2 size={16} /> Ouvir
             </button>
+
             <button
               onClick={() => setShowSettings(!showSettings)}
               className={`ml-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}
             >
               ⚙ Configurações
             </button>
+
           </div>
         </header>
       )}
@@ -640,27 +690,27 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
             }}
           >
 
-            {/*Extração de texto pdf*/}
-          
-            {isLoadingPdf ? (
-              <p className="text-center opacity-60">
-                Extraindo texto do PDF...
-              </p>
-            ) : book?.blocks && book.blocks.length > 0 ? (
+           {/* Texto estruturado do documento */}
 
-             <div ref={readerContentRef} className="space-y-5">
+            {book?.blocks && book.blocks.length > 0 ? (
 
-              {visibleBlocks.map((block, i) => {
+             <div className="space-y-5">
 
-                const shouldBeHeading = shouldRenderBlockAsHeading(
-                  block,
-                  i,
-                  visibleBlocks!
-                );
+             {visibleBlocks.map((block, i) => {
+              const textToRender =
+                isSimplifiedMode && block.simplifiedText
+                  ? block.simplifiedText
+                  : block.originalText;
 
-                const titleIndex = visibleBlocks
-                  .slice(0, i + 1)
-                  .filter((item) => item.type === "title").length;
+              const shouldBeHeading = shouldRenderBlockAsHeading(
+                block,
+                i,
+                visibleBlocks
+              );
+
+              const titleIndex = displayBlocks
+                .slice(0, displayBlocks.findIndex((item) => item.order === block.order) + 1)
+                .filter((item) => item.type === "title").length;
 
                 if (shouldBeHeading) {
                   if (titleIndex === 1) {
@@ -670,7 +720,7 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
                         style={getBlockStyle(1.7)}
                         className="text-center mb-8 font-bold"
                       >
-                        {renderTextWithReferences(block.originalText)}
+                        {renderTextWithReferences(textToRender)}
                       </h1>
                     );
                   }
@@ -681,7 +731,7 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
                       style={getBlockStyle(1.25)}
                       className="text-center mb-4 font-semibold"
                     >
-                      {renderTextWithReferences(block.originalText)}
+                      {renderTextWithReferences(textToRender)}
                     </h2>
                   );
                 }
@@ -693,7 +743,7 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
                       style={getBlockStyle(0.82)}
                       className="text-justify border-l-2 pl-4 text-muted-foreground border-border"
                     >
-                      {renderTextWithReferences(block.originalText)}
+                      {renderTextWithReferences(textToRender)}
                     </p>
                   );
                 }
@@ -704,7 +754,7 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
                     style={getBlockStyle(1)}
                     className="text-justify mb-6"
                   >
-                    {renderTextWithReferences(block.originalText)}
+                    {renderTextWithReferences(textToRender)}
                   </p>
                 );
               })}
