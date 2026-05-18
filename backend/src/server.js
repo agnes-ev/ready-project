@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
@@ -5,6 +7,11 @@ const fs = require("fs");
 const axios = require("axios");
 const FormData = require("form-data");
 const prisma = require("./prisma");
+const { GoogleGenAI } = require("@google/genai");
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
+});
 
 const app = express();
 const PORT = 3001;
@@ -478,10 +485,11 @@ app.patch("/documents/:id/position", async (req, res) => {
   }
 });
 
-// Endpoint temporário para testar simplificação de texto
+// Endpoint para simplificar o texto da página atual de um documento com IA
 app.post("/documents/:id/simplify", async (req, res) => {
   try {
     const { id } = req.params;
+    const { page } = req.body;
 
     const document = await prisma.document.findUnique({
       where: { id },
@@ -496,26 +504,93 @@ app.post("/documents/:id/simplify", async (req, res) => {
       });
     }
 
-    const updatedBlocks = await Promise.all(
-      document.blocks.map((block) => {
-        if (!block.originalText || block.originalText.trim().length === 0) {
-          return block;
-        }
+    const pageNumber = Number(page);
 
-        if (block.simplifiedText) {
-          return block;
-        }
+    if (Number.isNaN(pageNumber)) {
+      return res.status(400).json({
+        error: "Página inválida",
+      });
+    }
 
-        return prisma.documentBlock.update({
-          where: {
-            id: block.id,
-          },
-          data: {
-            simplifiedText: `[Simplificado] ${block.originalText}`,
-          },
-        });
-      })
+    const updatedBlocks = [...document.blocks];
+
+    const blockToSimplify = document.blocks.find((block) => {
+      const originalText = block.originalText?.trim();
+
+      if (!originalText) return false;
+
+      const blockPage = block.page ?? 1;
+
+      if (blockPage !== pageNumber) return false;
+
+      const alreadyHasRealSimplification =
+        block.simplifiedText &&
+        !block.simplifiedText.startsWith("[Simplificado]");
+
+      if (alreadyHasRealSimplification) return false;
+
+      return true;
+    });
+
+    if (!blockToSimplify) {
+      return res.json({
+        id: document.id,
+        title: document.title,
+        fileName: document.fileName,
+        progress: document.progress,
+        favorite: document.favorite,
+        currentPage: document.currentPage,
+        scrollPercent: document.scrollPercent,
+        blocks: updatedBlocks.sort((a, b) => a.order - b.order),
+      });
+    }
+
+    const originalText = blockToSimplify.originalText.trim();
+
+    const prompt = `
+Você é um assistente de acessibilidade textual.
+
+Reescreva o texto abaixo em linguagem mais simples, clara e acessível.
+
+Regras:
+- Mantenha o sentido original.
+- Mantenha títulos e subtítulos.
+- Substitua palavras difíceis por alternativas mais simples quando isso não mudar o sentido do texto.
+- Preserve nomes próprios, datas, citações, conceitos importantes e termos técnicos necessários.
+- Não faça um resumo ou uma versão muito curta do texto. Mantenha o máximo possível do conteúdo original, apenas reescrevendo para ser mais fácil de entender.
+- Não adicione informações novas.
+- Não dê várias opções.
+- Não explique o que você fez.
+- Não use markdown.
+- Retorne somente uma versão final do texto simplificado.
+
+Texto:
+${originalText}
+`;
+
+    const aiResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    const simplifiedText = aiResponse.text?.trim();
+
+    const updatedBlock = await prisma.documentBlock.update({
+      where: {
+        id: blockToSimplify.id,
+      },
+      data: {
+        simplifiedText: simplifiedText || originalText,
+      },
+    });
+
+    const updatedBlockIndex = updatedBlocks.findIndex(
+      (block) => block.id === updatedBlock.id
     );
+
+    if (updatedBlockIndex !== -1) {
+      updatedBlocks[updatedBlockIndex] = updatedBlock;
+    }
 
     res.json({
       id: document.id,
@@ -525,7 +600,7 @@ app.post("/documents/:id/simplify", async (req, res) => {
       favorite: document.favorite,
       currentPage: document.currentPage,
       scrollPercent: document.scrollPercent,
-      blocks: updatedBlocks,
+      blocks: updatedBlocks.sort((a, b) => a.order - b.order),
     });
   } catch (error) {
     console.error(error);
@@ -536,6 +611,13 @@ app.post("/documents/:id/simplify", async (req, res) => {
     });
   }
 });
+
+
+
+
+
+
+
 
 
 

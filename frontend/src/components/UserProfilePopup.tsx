@@ -80,7 +80,7 @@ const UserProfilePopup = ({
             <BookOpen size={20} className="text-primary" />
             <div>
               <span className="text-2xl font-bold text-foreground">{booksReadCount}</span>
-              <span className="text-sm text-muted-foreground ml-1.5">livros lidos</span>
+              <span className="text-sm text-muted-foreground ml-1.5">livros lidos na sua biblioteca</span>
             </div>
           </div>
 

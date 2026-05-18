@@ -572,24 +572,33 @@ const handleToggleSimplification = async () => {
     return;
   }
 
-  const alreadyHasSimplifiedText = book.blocks?.some(
-    (block) => block.simplifiedText
-  );
+  const currentPageAlreadyHasSimplifiedText = book.blocks?.some(
+  (block) =>
+    (block.page ?? 1) === currentPdfPage &&
+    block.simplifiedText &&
+    !block.simplifiedText.startsWith("[Simplificado]")
+);
 
-  if (alreadyHasSimplifiedText) {
-    setIsSimplifiedMode(true);
-    return;
-  }
+if (currentPageAlreadyHasSimplifiedText) {
+  setIsSimplifiedMode(true);
+  return;
+}
 
   try {
     setIsSimplifying(true);
 
-    const response = await fetch(
-      `http://localhost:3001/documents/${book.id}/simplify`,
-      {
-        method: "POST",
-      }
-    );
+   const response = await fetch(
+    `http://localhost:3001/documents/${book.id}/simplify`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        page: currentPdfPage,
+      }),
+    }
+  );
 
     if (!response.ok) {
       throw new Error("Erro ao simplificar texto");
@@ -625,6 +634,21 @@ const handleToggleSimplification = async () => {
             <p className="text-muted-foreground mt-4">
               Restaurando leitura...
             </p>
+          </div>
+        </div>
+      )}
+
+      {isSimplifying && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className={`flex flex-col items-center gap-4 px-8 py-6 rounded-2xl shadow-lg border ${panelClasses[settings.contrast]}`}>
+            <Sparkles size={32} className="animate-pulse" />
+
+            <div className="text-center">
+              <p className="font-semibold text-lg">Simplificando texto...</p>
+              <p className="text-sm opacity-70 mt-1">
+                Isso pode levar alguns segundos.
+              </p>
+            </div>
           </div>
         </div>
       )}
