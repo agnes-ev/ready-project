@@ -56,6 +56,9 @@ const Reader = () => {
   const [isRestoringPosition, setIsRestoringPosition] = useState(false);
   const [isSimplifiedMode, setIsSimplifiedMode] = useState(false);
   const [isSimplifying, setIsSimplifying] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [speechRate, setSpeechRate] = useState(1);
 
   const [settings, setSettings] = useState({
     fontSize: 18,
@@ -490,6 +493,19 @@ useEffect(() => {
   setBooks,
 ]);
 
+// Effect para cancelar fala ao desmontar o componente, garantindo que a fala não continue caso o usuário saia do leitor
+useEffect(() => {
+  return () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    setIsPaused(false);
+  };
+}, []);
+
+
+
+
+
 // Função para calcular a porcentagem de rolagem atual, usada na transição entre modos para determinar a página correta ou posição de rolagem
 const calculateCurrentScrollPercent = () => {
   const scrollTop = window.scrollY;
@@ -618,7 +634,84 @@ if (currentPageAlreadyHasSimplifiedText) {
   }
 };
 
+// Função para obter os blocos de texto que devem ser lidos em voz alta, considerando o modo de leitura e a posição atual para garantir que a fala corresponda ao que está sendo mostrado na tela
+const getBlocksForSpeech = () => {
+  if (settings.readingMode === "page") {
+    return visibleBlocks;
+  }
 
+  const currentScrollPercent = calculateCurrentScrollPercent();
+  const realTotalPages = pdfPageNumbers.length || 1;
+
+  const estimatedPageIndex = Math.min(
+    realTotalPages - 1,
+    Math.max(
+      0,
+      Math.round((currentScrollPercent / 100) * (realTotalPages - 1))
+    )
+  );
+
+  const estimatedPdfPage = pdfPageNumbers[estimatedPageIndex] ?? 1;
+
+  return displayBlocks.filter(
+    (block) => (block.page ?? 1) === estimatedPdfPage
+  );
+};
+
+const handleToggleSpeech = () => {
+  if (isSpeaking && !isPaused) {
+    window.speechSynthesis.pause();
+    setIsPaused(true);
+    return;
+  }
+
+  if (isSpeaking && isPaused) {
+    window.speechSynthesis.resume();
+    setIsPaused(false);
+    return;
+  }
+
+  const blocksForSpeech = getBlocksForSpeech();
+
+  const textToSpeak = blocksForSpeech
+    .map((block) =>
+      isSimplifiedMode && block.simplifiedText
+        ? block.simplifiedText
+        : block.originalText
+    )
+    .join(" ")
+    .trim();
+
+  if (!textToSpeak) return;
+
+  const utterance = new SpeechSynthesisUtterance(textToSpeak);
+
+  utterance.lang = "pt-BR";
+  utterance.rate = speechRate;
+  utterance.pitch = 1;
+
+  utterance.onend = () => {
+    setIsSpeaking(false);
+    setIsPaused(false);
+  };
+
+  utterance.onerror = () => {
+    setIsSpeaking(false);
+    setIsPaused(false);
+  };
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+
+  setIsSpeaking(true);
+  setIsPaused(false);
+};
+
+const handleStopSpeech = () => {
+  window.speechSynthesis.cancel();
+  setIsSpeaking(false);
+  setIsPaused(false);
+};
 
 
 
@@ -684,9 +777,34 @@ if (currentPageAlreadyHasSimplifiedText) {
                   : "Simplificar"}
             </button>
 
-            <button className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}>
-              <Volume2 size={16} /> Ouvir
+           <button
+            onClick={handleToggleSpeech}
+            className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}
+          >
+            <Volume2 size={16} />
+            {!isSpeaking ? "Ouvir" : isPaused ? "Continuar" : "Pausar"}
+          </button>
+
+          {isSpeaking && (
+            <button
+              onClick={handleStopSpeech}
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth`}
+            >
+              Parar
             </button>
+          )}
+
+          <select
+            value={speechRate}
+            onChange={(e) => setSpeechRate(Number(e.target.value))}
+            disabled={isSpeaking}
+            className={`px-2 py-1.5 text-sm rounded-lg border bg-transparent ${btnClasses[settings.contrast]} disabled:opacity-60 disabled:cursor-not-allowed`}
+          >
+            <option value={0.75}>0.75x</option>
+            <option value={1}>1x</option>
+            <option value={1.25}>1.25x</option>
+            <option value={1.5}>1.5x</option>
+          </select>
 
             <button
               onClick={() => setShowSettings(!showSettings)}
