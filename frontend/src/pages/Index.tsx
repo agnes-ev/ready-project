@@ -12,6 +12,8 @@ const Index = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  
+
  const handleFileUpload = async (file: File) => {
   try {
 
@@ -20,7 +22,7 @@ const Index = () => {
     const formData = new FormData();
     formData.append("pdf", file);
 
-    const response = await fetch("http://localhost:3001/upload-pdf", {
+    const response = await fetch("http://localhost:3001/upload-pdf/temporary", {
       method: "POST",
       body: formData,
     });
@@ -32,11 +34,14 @@ const Index = () => {
     const data = await response.json();
 
     const tempBook = {
-      id: String(Date.now()),
-      title: file.name.replace(/\.pdf$/i, ""),
-      progress: 0,
+      id: data.id,
+      title: data.title,
+      progress: data.progress ?? 0,
+      favorite: data.favorite ?? false,
+      currentPage: data.currentPage ?? 0,
+      scrollPercent: data.scrollPercent ?? 0,
       file,
-      blocks: data.blocks,
+      blocks: data.blocks ?? [],
       temporary: true,
     };
 

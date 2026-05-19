@@ -579,7 +579,7 @@ const changeReadingMode = (nextMode: "page" | "scroll") => {
   });
 };
 
-// Função para alternar modo de simplificação, que pode solicitar ao backend a simplificação do texto caso ainda não tenha sido feita, e mantém o estado de simplificação para mostrar o texto simplificado quando disponível
+// Função para alternar modo simplificado, que verifica se a página atual já tem texto simplificado antes de fazer a chamada para simplificação, e atualiza o estado dos blocos com o texto simplificado retornado pelo backend
 const handleToggleSimplification = async () => {
   if (!book) return;
 
@@ -588,12 +588,19 @@ const handleToggleSimplification = async () => {
     return;
   }
 
-  const currentPageAlreadyHasSimplifiedText = book.blocks?.some(
-  (block) =>
-    (block.page ?? 1) === currentPdfPage &&
+  const currentPageAlreadyHasSimplifiedText = book.blocks?.some((block) => {
+  const originalText = block.originalText?.trim();
+
+  if (!originalText) return false;
+  if ((block.page ?? 1) !== currentPdfPage) return false;
+  if (block.type === "title") return false;
+  if (originalText.length < 40) return false;
+
+  return (
     block.simplifiedText &&
     !block.simplifiedText.startsWith("[Simplificado]")
-);
+  );
+});
 
 if (currentPageAlreadyHasSimplifiedText) {
   setIsSimplifiedMode(true);
@@ -603,24 +610,31 @@ if (currentPageAlreadyHasSimplifiedText) {
   try {
     setIsSimplifying(true);
 
-   const response = await fetch(
-    `http://localhost:3001/documents/${book.id}/simplify`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        page: currentPdfPage,
-      }),
-    }
-  );
+    const token = localStorage.getItem("ready_token");
 
-    if (!response.ok) {
-      throw new Error("Erro ao simplificar texto");
+    if (!token) {
+      throw new Error("Você precisa estar logado para simplificar este documento.");
     }
+
+    const response = await fetch(
+      `http://localhost:3001/documents/${book.id}/simplify`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          page: currentPdfPage,
+        }),
+      }
+    );
 
     const updatedBook = await response.json();
+
+    if (!response.ok) {
+      throw new Error(updatedBook.error || "Erro ao simplificar texto.");
+    }
 
     setBooks((prev) =>
       prev.map((item) => (item.id === book.id ? updatedBook : item))
@@ -629,10 +643,17 @@ if (currentPageAlreadyHasSimplifiedText) {
     setIsSimplifiedMode(true);
   } catch (error) {
     console.error("Erro ao simplificar texto:", error);
+
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Erro ao simplificar texto."
+    );
   } finally {
     setIsSimplifying(false);
   }
 };
+
 
 // Função para obter os blocos de texto que devem ser lidos em voz alta, considerando o modo de leitura e a posição atual para garantir que a fala corresponda ao que está sendo mostrado na tela
 const getBlocksForSpeech = () => {
@@ -764,18 +785,20 @@ const handleStopSpeech = () => {
           </div>
           <div className="flex items-center gap-2">
 
-            <button
-              onClick={handleToggleSimplification}
-              disabled={isSimplifying}
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth disabled:opacity-60 disabled:cursor-not-allowed`}
-            >
-              <Sparkles size={16} />
-              {isSimplifying
-                ? "Simplificando..."
-                : isSimplifiedMode
-                  ? "Voltar para original"
-                  : "Simplificar"}
-            </button>
+           {!book?.temporary && (
+              <button
+                onClick={handleToggleSimplification}
+                disabled={isSimplifying}
+                className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium ${btnClasses[settings.contrast]} rounded-lg transition-smooth disabled:opacity-60 disabled:cursor-not-allowed`}
+              >
+                <Sparkles size={16} />
+                {isSimplifying
+                  ? "Simplificando..."
+                  : isSimplifiedMode
+                    ? "Voltar para original"
+                    : "Simplificar"}
+              </button>
+            )}
 
            <button
             onClick={handleToggleSpeech}
@@ -805,6 +828,7 @@ const handleStopSpeech = () => {
             <option value={1.25}>1.25x</option>
             <option value={1.5}>1.5x</option>
           </select>
+
 
             <button
               onClick={() => setShowSettings(!showSettings)}

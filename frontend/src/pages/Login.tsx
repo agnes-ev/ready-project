@@ -6,12 +6,50 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+
+  // Função para lidar com o envio do formulário de login
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError("");
+
+  try {
+    setIsLoading(true);
+
+    const response = await fetch("http://localhost:3001/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Erro ao fazer login.");
+    }
+
+    localStorage.setItem("ready_token", data.token);
+    localStorage.setItem("ready_user", JSON.stringify(data.user));
+
     navigate("/library");
-  };
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Erro ao fazer login."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6">
@@ -54,13 +92,21 @@ const Login = () => {
               </button>
             </div>
           </div>
+          
+          {error && (
+            <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-4 py-3">
+              {error}
+            </p>
+          )}
 
-          <button
-            type="submit"
-            className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-smooth"
-          >
-            Entrar
-          </button>
+         <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full py-3 bg-primary text-primary-foreground rounded-xl font-medium hover:opacity-90 transition-smooth disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isLoading ? "Entrando..." : "Entrar"}
+        </button>
+        
         </form>
 
         <p className="text-center text-sm text-muted-foreground">

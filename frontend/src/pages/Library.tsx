@@ -1,5 +1,5 @@
 import { BookOpen, FileText, Plus, X, Pencil, Trash2, Check, Star } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import UserProfilePopup from "@/components/UserProfilePopup";
 import { useBooks, type Book } from "@/context/BooksContext";
@@ -15,6 +15,7 @@ const Library = () => {
   const [isUploadHovered, setIsUploadHovered] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
+  const navigate = useNavigate();
 
 
 // Função para iniciar a edição do título do livro
@@ -87,12 +88,31 @@ const startEdit = (book: Book) => {
     }
   };
 
+// useEffect para carregar os livros da biblioteca quando o componente for montado
 useEffect(() => {
   const loadDocuments = async () => {
     try {
+      const token = localStorage.getItem("ready_token");
+
+      if (!token) {
+        navigate("/login");
+        return;
+      }
+
       setIsLoadingBooks(true);
-      
-      const response = await fetch("http://localhost:3001/documents");
+
+      const response = await fetch("http://localhost:3001/documents", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        localStorage.removeItem("ready_token");
+        localStorage.removeItem("ready_user");
+        navigate("/login");
+        return;
+      }
 
       if (!response.ok) {
         throw new Error("Erro ao buscar documentos");
@@ -109,7 +129,7 @@ useEffect(() => {
   };
 
   loadDocuments();
-}, [setBooks]);
+}, [setBooks, navigate]);
 
 // Função para lidar com o upload do arquivo PDF, enviar para o backend e atualizar a biblioteca com os dados retornados
  const handleFileUpload = async (file: File) => {
@@ -120,10 +140,20 @@ useEffect(() => {
     const formData = new FormData();
     formData.append("pdf", file);
 
-    const response = await fetch("http://localhost:3001/upload-pdf", {
-      method: "POST",
-      body: formData,
-    });
+    const token = localStorage.getItem("ready_token");
+
+if (!token) {
+  navigate("/login");
+  return;
+}
+
+const response = await fetch("http://localhost:3001/upload-pdf", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+  body: formData,
+});
 
     if (!response.ok) {
       throw new Error("Erro ao enviar PDF para o backend");

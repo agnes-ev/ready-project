@@ -7,19 +7,34 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        String   @id @default(uuid())
+  name      String?
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  documents Document[]
+  settings  ReaderSettings?
+}
+
 model Document {
   id            String   @id @default(uuid())
   title         String
   fileName      String
-  favorite      Boolean   @default(false)
-  progress      Int       @default(0)
-  currentPage   Int       @default(0)
-  scrollPercent Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  favorite      Boolean  @default(false)
+  progress      Int      @default(0)
+  currentPage   Int      @default(0)
+  scrollPercent Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
   lastOpenedAt  DateTime?
 
-  blocks    DocumentBlock[]
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  blocks        DocumentBlock[]
 }
 
 model DocumentBlock {
@@ -32,22 +47,25 @@ model DocumentBlock {
   page           Int?
   sourceType     String?
 
-  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }
 
- model ReaderSettings {
-    id            String  @id @default(uuid())
-    userKey       String  @unique
-    fontSize      Int     @default(18)
-    lineHeight    Float   @default(1.6)
-    letterSpacing Float   @default(0)
-    contrast      String  @default("default")
-    readingMode   String  @default("page")
-    focusMode     Boolean @default(false)
-    fontFamily    String  @default("Arial")
-    bold          Boolean @default(false)
-    italic        Boolean @default(false)
+model ReaderSettings {
+  id            String  @id @default(uuid())
+  userId        String  @unique
 
-    createdAt     DateTime @default(now())
-    updatedAt     DateTime @updatedAt
+  fontSize      Int     @default(18)
+  lineHeight    Float   @default(1.6)
+  letterSpacing Float   @default(0)
+  contrast      String  @default("default")
+  readingMode   String  @default("page")
+  focusMode     Boolean @default(false)
+  fontFamily    String  @default("Arial")
+  bold          Boolean @default(false)
+  italic        Boolean @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

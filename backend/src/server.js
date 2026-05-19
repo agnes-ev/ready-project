@@ -8,6 +8,9 @@ const axios = require("axios");
 const FormData = require("form-data");
 const prisma = require("./prisma");
 const { GoogleGenAI } = require("@google/genai");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -15,6 +18,7 @@ const ai = new GoogleGenAI({
 
 const app = express();
 const PORT = 3001;
+const JWT_SECRET = process.env.JWT_SECRET || "ready-dev-secret";
 
 app.use(cors());
 app.use(express.json());
@@ -25,8 +29,198 @@ app.get("/", (req, res) => {
   res.send("Backend do Read.y funcionando!");
 });
 
+// Endpoint para cadastro de usuário
+app.post("/auth/register", async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "E-mail e senha são obrigatórios.",
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        error: "A senha deve ter pelo menos 6 caracteres.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const existingUser = await prisma.user.findUnique({
+      where: {
+        email: normalizedEmail,
+      },
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        error: "Já existe uma conta com esse e-mail.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name: name?.trim() || null,
+        email: normalizedEmail,
+        password: hashedPassword,
+        settings: {
+          create: {},
+        },
+      },
+      include: {
+        settings: true,
+      },
+    });
+
+    const token = jwt.sign(
+      {
+        userId: user.id,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    res.status(201).json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao cadastrar usuário",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para login de usuário
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "E-mail e senha são obrigatórios.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const user = await prisma.user.findUnique({
+      where: {
+        email: normalizedEmail,
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        error: "E-mail ou senha inválidos.",
+      });
+    }
+
+    const passwordIsValid = await bcrypt.compare(password, user.password);
+
+    if (!passwordIsValid) {
+      return res.status(401).json({
+        error: "E-mail ou senha inválidos.",
+      });
+    }
+
+    const token = jwt.sign(
+      {
+        userId: user.id,
+      },
+      JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao fazer login",
+      details: error.message,
+    });
+  }
+});
+
+// Middleware para autenticação de rotas protegidas
+const authenticateUser = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader) {
+      return res.status(401).json({
+        error: "Token não informado.",
+      });
+    }
+
+    const [, token] = authHeader.split(" ");
+
+    if (!token) {
+      return res.status(401).json({
+        error: "Token inválido.",
+      });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const user = await prisma.user.findUnique({
+      where: {
+        id: decoded.userId,
+      },
+    });
+
+    if (!user) {
+      return res.status(401).json({
+        error: "Usuário não encontrado.",
+      });
+    }
+
+    req.user = user;
+
+    next();
+  } catch (error) {
+    return res.status(401).json({
+      error: "Token inválido ou expirado.",
+    });
+  }
+};
+
+// Endpoint para buscar usuário autenticado
+app.get("/auth/me", authenticateUser, async (req, res) => {
+  res.json({
+    user: {
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email,
+    },
+  });
+});
+
 // Endpoint para upload de PDF
-app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
+app.post("/upload-pdf", authenticateUser, upload.single("pdf"), async (req, res) => {
   let filePath;
 
   try {
@@ -57,6 +251,7 @@ app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
       data: {
         title: originalName.replace(/\.pdf$/i, ""),
         fileName: originalName,
+        userId: req.user.id,
         blocks: {
           create: blocks.map((block, index) => ({
             order: block.order ?? index,
@@ -106,9 +301,12 @@ app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
 });
 
 // Endpoint para buscar todos os documentos
-app.get("/documents", async (req, res) => {
+app.get("/documents", authenticateUser, async (req, res) => {
   try {
     const documents = await prisma.document.findMany({
+      where: {
+        userId: req.user.id,
+      },
       orderBy: [
         {
           lastOpenedAt: "desc",
@@ -486,13 +684,24 @@ app.patch("/documents/:id/position", async (req, res) => {
 });
 
 // Endpoint para simplificar o texto da página atual de um documento com IA
-app.post("/documents/:id/simplify", async (req, res) => {
+app.post("/documents/:id/simplify", authenticateUser, async (req, res) => {
   try {
     const { id } = req.params;
     const { page } = req.body;
 
-    const document = await prisma.document.findUnique({
-      where: { id },
+    const pageNumber = Number(page);
+
+    if (Number.isNaN(pageNumber)) {
+      return res.status(400).json({
+        error: "Página inválida",
+      });
+    }
+
+    const document = await prisma.document.findFirst({
+      where: {
+        id,
+        userId: req.user.id,
+      },
       include: {
         blocks: true,
       },
@@ -504,35 +713,36 @@ app.post("/documents/:id/simplify", async (req, res) => {
       });
     }
 
-    const pageNumber = Number(page);
-
-    if (Number.isNaN(pageNumber)) {
-      return res.status(400).json({
-        error: "Página inválida",
-      });
-    }
-
     const updatedBlocks = [...document.blocks];
 
-    const blockToSimplify = document.blocks.find((block) => {
-      const originalText = block.originalText?.trim();
+    const blocksToSimplify = document.blocks
+      .sort((a, b) => a.order - b.order)
+      .filter((block) => {
+        const originalText = block.originalText?.trim();
 
-      if (!originalText) return false;
+        if (!originalText) return false;
 
-      const blockPage = block.page ?? 1;
+        const blockPage = block.page ?? 1;
 
-      if (blockPage !== pageNumber) return false;
+        if (blockPage !== pageNumber) return false;
 
-      const alreadyHasRealSimplification =
-        block.simplifiedText &&
-        !block.simplifiedText.startsWith("[Simplificado]");
+        // Ignora apenas títulos. Notas podem ser simplificadas.
+        if (block.type === "title") return false;
 
-      if (alreadyHasRealSimplification) return false;
+        // Evita gastar IA com fragmentos muito pequenos.
+        if (originalText.length < 40) return false;
 
-      return true;
-    });
+        const alreadyHasRealSimplification =
+          block.simplifiedText &&
+          !block.simplifiedText.startsWith("[Simplificado]");
 
-    if (!blockToSimplify) {
+        if (alreadyHasRealSimplification) return false;
+
+        return true;
+      })
+      .slice(0, 3);
+
+    if (blocksToSimplify.length === 0) {
       return res.json({
         id: document.id,
         title: document.title,
@@ -545,7 +755,11 @@ app.post("/documents/:id/simplify", async (req, res) => {
       });
     }
 
-    const originalText = blockToSimplify.originalText.trim();
+    let successCount = 0;
+
+for (const block of blocksToSimplify) {
+  try {
+    const originalText = block.originalText.trim();
 
     const prompt = `
 Você é um assistente de acessibilidade textual.
@@ -577,7 +791,7 @@ ${originalText}
 
     const updatedBlock = await prisma.documentBlock.update({
       where: {
-        id: blockToSimplify.id,
+        id: block.id,
       },
       data: {
         simplifiedText: simplifiedText || originalText,
@@ -585,12 +799,30 @@ ${originalText}
     });
 
     const updatedBlockIndex = updatedBlocks.findIndex(
-      (block) => block.id === updatedBlock.id
+      (item) => item.id === updatedBlock.id
     );
 
     if (updatedBlockIndex !== -1) {
       updatedBlocks[updatedBlockIndex] = updatedBlock;
     }
+
+    successCount++;
+  } catch (blockError) {
+    console.error("Erro ao simplificar bloco:", block.id, blockError.message);
+  }
+}
+
+if (successCount === 0) {
+  return res.status(503).json({
+    error: "Não foi possível simplificar agora. Tente novamente em alguns instantes.",
+  });
+}
+
+
+
+
+
+
 
     res.json({
       id: document.id,
@@ -609,6 +841,69 @@ ${originalText}
       error: "Erro ao simplificar documento",
       details: error.message,
     });
+  }
+});
+
+// Endpoint para upload temporário de PDF, usado na leitura rápida sem login
+app.post("/upload-pdf/temporary", upload.single("pdf"), async (req, res) => {
+  let filePath;
+
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: "Nenhum arquivo PDF foi enviado.",
+      });
+    }
+
+    filePath = req.file.path;
+
+    const originalName = Buffer.from(req.file.originalname, "latin1").toString("utf8");
+
+    const form = new FormData();
+    form.append("file", fs.createReadStream(filePath), originalName);
+
+    const pythonResponse = await axios.post(
+      "http://127.0.0.1:8000/process-pdf",
+      form,
+      {
+        headers: form.getHeaders(),
+      }
+    );
+
+    const blocks = pythonResponse.data.blocks || [];
+    const temporaryDocumentId = `temporary-${Date.now()}`;
+
+    res.json({
+      id: temporaryDocumentId,
+      title: originalName.replace(/\.pdf$/i, ""),
+      fileName: originalName,
+      progress: 0,
+      favorite: false,
+      currentPage: 0,
+      scrollPercent: 0,
+      temporary: true,
+      blocks: blocks.map((block, index) => ({
+        id: `temporary-block-${index}`,
+        documentId: temporaryDocumentId,
+        order: block.order ?? index,
+        type: block.type ?? "paragraph",
+        originalText: block.originalText ?? "",
+        simplifiedText: null,
+        page: block.page ?? null,
+        sourceType: block.sourceType ?? null,
+      })),
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao processar PDF temporário",
+      details: error.message,
+    });
+  } finally {
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
   }
 });
 
