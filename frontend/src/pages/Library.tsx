@@ -17,6 +17,38 @@ const Library = () => {
   const [isLoadingBooks, setIsLoadingBooks] = useState(true);
   const navigate = useNavigate();
 
+  const [user, setUser] = useState(() => {
+    const storedUser = localStorage.getItem("ready_user");
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
+
+const userName = user?.name || "Usuário";
+const avatarUrl = user?.avatarUrl || null;
+
+
+// Função para lidar com a atualização da foto de perfil no UserProfilePopup
+const handleUpdateAvatar = (newAvatarUrl: string) => {
+  setUser((prev: any) =>
+    prev
+      ? {
+          ...prev,
+          avatarUrl: newAvatarUrl,
+        }
+      : prev
+  );
+};
+
+// Função para lidar com a atualização do nome de usuário no UserProfilePopup
+const handleUpdateUserName = (newName: string) => {
+  setUser((prev: any) =>
+    prev
+      ? {
+          ...prev,
+          name: newName,
+        }
+      : prev
+  );
+};
 
 // Função para iniciar a edição do título do livro
 const startEdit = (book: Book) => {
@@ -228,6 +260,64 @@ const toggleFavorite = async (id: string, currentFavorite: boolean) => {
   }
 };
 
+// Função para lidar com o logout do usuário
+const handleLogout = () => {
+  localStorage.removeItem("ready_token");
+  localStorage.removeItem("ready_user");
+
+  setBooks([]);
+
+  navigate("/");
+};
+
+// Função para lidar com a exclusão da conta do usuário
+const handleDeleteAccount = async () => {
+  const confirmed = window.confirm(
+    "Tem certeza que deseja excluir sua conta? Essa ação apagará seus livros, progresso, favoritos e configurações."
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const token = localStorage.getItem("ready_token");
+
+    if (!token) {
+      navigate("/login");
+      return;
+    }
+
+    const response = await fetch("http://localhost:3001/auth/account", {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Erro ao excluir conta.");
+    }
+
+    localStorage.removeItem("ready_token");
+    localStorage.removeItem("ready_user");
+    setBooks([]);
+
+    navigate("/");
+  } catch (error) {
+    console.error("Erro ao excluir conta:", error);
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Erro ao excluir conta."
+    );
+  }
+};
+
+
+
+
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -260,11 +350,17 @@ const toggleFavorite = async (id: string, currentFavorite: boolean) => {
           </Link>
 
           <div className="flex items-center gap-4 mr-2">
-           <UserProfilePopup
-              userName="Usuário"
+            <UserProfilePopup
+              userName={userName}
+              displayName={`Olá, ${userName}`}
+              avatarUrl={avatarUrl}
               booksReadCount={libraryBooks.filter((book) => book.progress >= 100).length}
               favoriteBooks={libraryBooks.filter((book) => book.favorite)}
-           />
+              onLogout={handleLogout}
+              onDeleteAccount={handleDeleteAccount}
+              onUpdateUserName={handleUpdateUserName}
+              onUpdateAvatar={handleUpdateAvatar}
+            />
           </div>
         </div>
       </header>

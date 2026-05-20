@@ -10,17 +10,54 @@ const Register = () => {
   const navigate = useNavigate();
 
   const isLongEnough = password.length >= 6;
-  const hasLowercase = /[a-z]/.test(password);
-  const hasUppercase = /[A-Z]/.test(password);
   const hasNumber = /\d/.test(password);
   const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
-  const isPasswordValid = isLongEnough && hasLowercase && hasUppercase && hasNumber && hasSpecialChar;
+  const isPasswordValid = isLongEnough && hasNumber && hasSpecialChar;
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isPasswordValid) return;
+  const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  if (!isPasswordValid) return;
+
+  setError("");
+
+  try {
+    setIsLoading(true);
+
+    const response = await fetch("http://localhost:3001/auth/register", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name,
+        email,
+        password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Erro ao criar conta.");
+    }
+
+    localStorage.setItem("ready_token", data.token);
+    localStorage.setItem("ready_user", JSON.stringify(data.user));
+
     navigate("/library");
-  };
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Erro ao criar conta."
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-6 relative top-[10px]">
@@ -29,6 +66,8 @@ const Register = () => {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Criar conta</h1>
           <p className="text-muted-foreground">Comece sua jornada de leitura adaptativa</p>
         </div>
+
+
 
         <form onSubmit={handleSubmit} className="bg-card shadow-smooth rounded-2xl p-8 space-y-6 relative top-[-15px]">
           <div className="space-y-2">
@@ -74,16 +113,11 @@ const Register = () => {
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
+
             </div>
             <ul className="text-xs list-disc list-inside space-y-1 relative top-[6px]">
               <li className={isLongEnough ? "text-emerald-500" : "text-destructive"}>
                 Senha de no mínimo de 6 caracteres
-              </li>
-              <li className={hasUppercase ? "text-emerald-500" : "text-destructive"}>
-                Adicione pelo menos uma letra maiúscula
-              </li>
-              <li className={hasLowercase ? "text-emerald-500" : "text-destructive"}>
-                Adicione pelo menos uma letra minúscula
               </li>
               <li className={hasNumber ? "text-emerald-500" : "text-destructive"}>
                 Adicione pelo menos um número
@@ -94,13 +128,24 @@ const Register = () => {
             </ul>
           </div>
 
+          {error && (
+            <p className="text-sm text-destructive bg-destructive/10 rounded-lg px-4 py-3">
+              {error}
+            </p>
+          )}
+
           <button
             type="submit"
-            disabled={!isPasswordValid}
-            className={`w-full py-3 rounded-xl font-medium transition-smooth relative top-[-4px] ${isPasswordValid ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-muted text-muted-foreground cursor-not-allowed "}`}
+            disabled={!isPasswordValid || isLoading}
+            className={`w-full py-3 rounded-xl font-medium transition-smooth relative top-[-4px] ${
+              isPasswordValid && !isLoading
+                ? "bg-primary text-primary-foreground hover:opacity-90"
+                : "bg-muted text-muted-foreground cursor-not-allowed"
+            }`}
           >
-            Cadastrar
+            {isLoading ? "Cadastrando..." : "Cadastrar"}
           </button>
+
         </form>
 
         <p className="text-center text-sm text-muted-foreground relative top-[-35px]">

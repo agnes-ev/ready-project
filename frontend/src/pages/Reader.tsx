@@ -12,6 +12,19 @@ type ReaderBlock = Book["blocks"][number] & {
   type: Book["blocks"][number]["type"] | "paragraph_fragment";
 };
 
+const defaultReaderSettings = {
+  fontSize: 18,
+  lineHeight: 1.6,
+  letterSpacing: 0,
+  contrast: "default" as Contrast,
+  readingMode: "page" as "scroll" | "page",
+  focusMode: false,
+  fontFamily: "Arial",
+  bold: false,
+  italic: false,
+};
+
+
 const themeClasses: Record<Contrast, string> = {
   default: "bg-background text-foreground",
   high: "bg-white text-black",
@@ -60,17 +73,7 @@ const Reader = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [speechRate, setSpeechRate] = useState(1);
 
-  const [settings, setSettings] = useState({
-    fontSize: 18,
-    lineHeight: 1.6,
-    letterSpacing: 0,
-    contrast: "default" as Contrast,
-    readingMode: "page" as "scroll" | "page",
-    focusMode: false,
-    fontFamily: "Arial",
-    bold: false,
-    italic: false,
-  });
+  const [settings, setSettings] = useState(defaultReaderSettings);
 
   const accent = accentBtnClasses[settings.contrast];
 
@@ -215,7 +218,22 @@ useEffect(() => {
     try {
       setIsLoadingSettings(true);
 
-      const response = await fetch("http://localhost:3001/reader-settings");
+      if (book?.temporary) {
+        setSettings(defaultReaderSettings);
+        return;
+      }
+
+      const token = localStorage.getItem("ready_token");
+
+      if (!token) {
+        return;
+      }
+
+      const response = await fetch("http://localhost:3001/reader-settings", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
       if (!response.ok) {
         throw new Error("Erro ao buscar configurações do leitor");
@@ -243,18 +261,26 @@ useEffect(() => {
   };
 
   loadReaderSettings();
-}, []);
+}, [book?.id, book?.temporary]);
 
 // Effect para salvar configurações do leitor sempre que elas mudarem
 useEffect(() => {
   if (isLoadingSettings) return;
+  if (book?.temporary) return;
 
   const timeoutId = setTimeout(async () => {
     try {
+      const token = localStorage.getItem("ready_token");
+
+      if (!token) {
+        return;
+      }
+
       await fetch("http://localhost:3001/reader-settings", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(settings),
       });
@@ -264,7 +290,7 @@ useEffect(() => {
   }, 500);
 
   return () => clearTimeout(timeoutId);
-}, [settings, isLoadingSettings]);
+}, [settings, isLoadingSettings, book?.id, book?.temporary]);
 
 
 // Effect para restaurar a última posição no modo página

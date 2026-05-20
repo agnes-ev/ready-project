@@ -22,8 +22,39 @@ const JWT_SECRET = process.env.JWT_SECRET || "ready-dev-secret";
 
 app.use(cors());
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 
 const upload = multer({ dest: "uploads/" });
+
+// Configuração do multer para upload de avatares
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const avatarDir = "uploads/avatars";
+
+    if (!fs.existsSync(avatarDir)) {
+      fs.mkdirSync(avatarDir, { recursive: true });
+    }
+
+    cb(null, avatarDir);
+  },
+  filename: (req, file, cb) => {
+    const extension = file.originalname.split(".").pop();
+    const fileName = `${req.user.id}-${Date.now()}.${extension}`;
+
+    cb(null, fileName);
+  },
+});
+
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Arquivo inválido. Envie uma imagem."));
+    }
+
+    cb(null, true);
+  },
+});
 
 app.get("/", (req, res) => {
   res.send("Backend do Read.y funcionando!");
@@ -92,6 +123,7 @@ app.post("/auth/register", async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        avatarUrl: user.avatarUrl,
       },
     });
   } catch (error) {
@@ -153,6 +185,7 @@ app.post("/auth/login", async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
+        avatarUrl: user.avatarUrl,
       },
     });
   } catch (error) {
@@ -215,6 +248,7 @@ app.get("/auth/me", authenticateUser, async (req, res) => {
       id: req.user.id,
       name: req.user.name,
       email: req.user.email,
+      avatarUrl: req.user.avatarUrl,
     },
   });
 });
@@ -553,16 +587,16 @@ app.patch("/documents/:id/progress", async (req, res) => {
   }
 });
 
-// Endpoint para buscar ou criar configurações do leitor
-app.get("/reader-settings", async (req, res) => {
+// Endpoint para buscar ou criar configurações do leitor do usuário autenticado
+app.get("/reader-settings", authenticateUser, async (req, res) => {
   try {
     const settings = await prisma.readerSettings.upsert({
       where: {
-        userKey: "default-user",
+        userId: req.user.id,
       },
       update: {},
       create: {
-        userKey: "default-user",
+        userId: req.user.id,
       },
     });
 
@@ -577,8 +611,8 @@ app.get("/reader-settings", async (req, res) => {
   }
 });
 
-// Endpoint para atualizar configurações do leitor
-app.patch("/reader-settings", async (req, res) => {
+// Endpoint para atualizar configurações do leitor do usuário autenticado
+app.patch("/reader-settings", authenticateUser, async (req, res) => {
   try {
     const {
       fontSize,
@@ -594,7 +628,7 @@ app.patch("/reader-settings", async (req, res) => {
 
     const settings = await prisma.readerSettings.upsert({
       where: {
-        userKey: "default-user",
+        userId: req.user.id,
       },
       update: {
         fontSize,
@@ -608,7 +642,7 @@ app.patch("/reader-settings", async (req, res) => {
         italic,
       },
       create: {
-        userKey: "default-user",
+        userId: req.user.id,
         fontSize,
         lineHeight,
         letterSpacing,
@@ -818,12 +852,6 @@ if (successCount === 0) {
   });
 }
 
-
-
-
-
-
-
     res.json({
       id: document.id,
       title: document.title,
@@ -907,10 +935,108 @@ app.post("/upload-pdf/temporary", upload.single("pdf"), async (req, res) => {
   }
 });
 
+// Endpoint para excluir a conta do usuário autenticado
+app.delete("/auth/account", authenticateUser, async (req, res) => {
+  try {
+    await prisma.user.delete({
+      where: {
+        id: req.user.id,
+      },
+    });
 
+    res.json({
+      message: "Conta excluída com sucesso.",
+    });
+  } catch (error) {
+    console.error(error);
 
+    res.status(500).json({
+      error: "Erro ao excluir conta",
+      details: error.message,
+    });
+  }
+});
 
+// Endpoint para atualizar perfil do usuário autenticado
+app.patch("/auth/profile", authenticateUser, async (req, res) => {
+  try {
+    const { name } = req.body;
 
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        error: "Nome inválido.",
+      });
+    }
+
+    const user = await prisma.user.update({
+      where: {
+        id: req.user.id,
+      },
+      data: {
+        name: name.trim(),
+      },
+    });
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        avatarUrl: user.avatarUrl,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      error: "Erro ao atualizar perfil",
+      details: error.message,
+    });
+  }
+});
+
+// Endpoint para atualizar foto de perfil do usuário autenticado
+app.patch(
+  "/auth/avatar",
+  authenticateUser,
+  uploadAvatar.single("avatar"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          error: "Nenhuma imagem foi enviada.",
+        });
+      }
+
+      const avatarUrl = `http://localhost:3001/uploads/avatars/${req.file.filename}`;
+
+      const user = await prisma.user.update({
+        where: {
+          id: req.user.id,
+        },
+        data: {
+          avatarUrl,
+        },
+      });
+
+      res.json({
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          avatarUrl: user.avatarUrl,
+        },
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        error: "Erro ao atualizar foto de perfil",
+        details: error.message,
+      });
+    }
+  }
+);
 
 
 
