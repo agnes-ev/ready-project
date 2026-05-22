@@ -13,10 +13,9 @@ const Index = () => {
   const [isUploading, setIsUploading] = useState(false);
 
   
-
+// Função para lidar com o upload do arquivo PDF
  const handleFileUpload = async (file: File) => {
   try {
-
     setIsUploading(true);
 
     const formData = new FormData();
@@ -27,11 +26,13 @@ const Index = () => {
       body: formData,
     });
 
-    if (!response.ok) {
-      throw new Error("Erro ao enviar PDF para o backend");
-    }
+    const data = await response.json().catch(() => null);
 
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(
+        data?.error || data?.details || "Erro ao enviar PDF para o backend"
+      );
+    }
 
     const tempBook = {
       id: data.id,
@@ -45,12 +46,20 @@ const Index = () => {
       temporary: true,
     };
 
-    setBooks((prev) => [...prev, tempBook]);
+    setBooks((prev) => {
+      const withoutPreviousTemp = prev.filter((book) => !book.temporary);
+      return [...withoutPreviousTemp, tempBook];
+    });
 
     navigate(`/reader/${tempBook.id}`);
   } catch (error) {
-    console.error(error);
-    alert("Erro ao processar PDF");
+    console.error("Erro no upload temporário:", error);
+
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Erro ao processar PDF"
+    );
   } finally {
     setIsUploading(false);
   }
@@ -108,7 +117,12 @@ const Index = () => {
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) handleFileUpload(file);
+
+              if (file) {
+                handleFileUpload(file);
+              }
+
+              e.target.value = "";
             }}
           />
 

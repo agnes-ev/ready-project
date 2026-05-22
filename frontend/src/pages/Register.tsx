@@ -60,16 +60,16 @@ const Register = () => {
 };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-6 relative top-[10px]">
+    <div className="h-screen overflow-hidden bg-background flex items-center justify-center px-6">
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Criar conta</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground mt-4">Criar conta</h1>
           <p className="text-muted-foreground">Comece sua jornada de leitura adaptativa</p>
         </div>
 
 
 
-        <form onSubmit={handleSubmit} className="bg-card shadow-smooth rounded-2xl p-8 space-y-6 relative top-[-15px]">
+        <form onSubmit={handleSubmit} className="bg-card shadow-smooth rounded-2xl p-8 space-y-6 relative top-[-8px]">
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground block">Nome</label>
             <input
@@ -148,13 +148,13 @@ const Register = () => {
 
         </form>
 
-        <p className="text-center text-sm text-muted-foreground relative top-[-35px]">
+        <p className="text-center text-sm text-muted-foreground relative top-[-20px]">
           Já tem uma conta?{" "}
           <Link to="/login" className="text-primary font-medium hover:underline">
             Entrar
           </Link>
         </p>
-        <p className="text-center text-xs text-muted-foreground relative top-[-60px] ">
+        <p className="text-center text-xs text-muted-foreground relative top-[-40px] ">
           Ao criar sua conta, você concorda com os Termos de Uso.
         </p>
       </div>
